@@ -45,7 +45,8 @@ enables in `OnEnable`. Every frame, while not holding anything:
 3. **Hold** (`FixedUpdate`) — set `linearVelocity` and `angularVelocity` to exactly the values that would carry the object to
    the `Hold Target`'s position and rotation in one physics step.
    The object stays a normal rigidbody, so it can be blocked by tables and walls and can knock other things over.
-   (`Grabbable` raises `maxAngularVelocity` because Unity's default cap of 7 rad/s is slower than a wrist.)
+   (Project Settings ▸ Physics ▸ Default Max Angular Speed is raised to 500 rad/s so a fast wrist flick is not clamped;
+   Unity's default is 50.)
 4. **Release** — when the grip is let go. Every physics step while holding, the object's velocities were recorded, each
    sample blended with the previous one (`smoothing`) and kept for `releaseWindow` seconds (30 ms). The throw uses the
    fastest linear and angular velocity in that window, because a hand slows down just before it lets go.
