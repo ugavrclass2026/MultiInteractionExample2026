@@ -6,9 +6,12 @@ using UnityEngine.InputSystem;
 public class Hand : MonoBehaviour
 {
     public InputAction gripAction; //make sure you enable these and disable them (see below)
+    public InputAction driveAction = new InputAction(expectedControlType:"Vector2"); //this action is going to cause us to drive forward/backward and left/right
+    public float maxDrivingSpeed = 3; //m//s
     public GameObject graphics; //makes it easy to disable or scale without affecting the logic or attached objects
     public Transform grabPoint; 
     public Transform rig; //purely used for air grab movement
+    public Transform head; //used for driving movement
     public float grabRadius = 0.1f; //grabbable in this range (defined in the inspector) can be grabbed
 
     [Header("Release")]
@@ -42,17 +45,22 @@ public class Hand : MonoBehaviour
     void OnEnable()
     {
         gripAction.Enable();
+        driveAction.Enable();
     }
 
     void OnDisable()
     {
         gripAction.Disable();
+        driveAction.Disable();
         if (pulling == this)
             pulling = null;
     }
 
     void Update()
     {
+
+        Vector2 driveControl = driveAction.ReadValue<Vector2>();
+        Debug.Log(driveControl);
         bool gripPressed = gripAction.IsPressed(); //save for later
 
         if (Held == null)
@@ -80,6 +88,11 @@ public class Hand : MonoBehaviour
         if (pulling == this)
             rig.position += pullAnchor - transform.position; //realigning my new hand position 
 
+        Vector3 driveDirection = head.forward;
+        driveDirection.y = 0;
+        driveDirection.Normalize();
+        rig.position += driveDirection * driveControl.y * maxDrivingSpeed * Time.deltaTime;
+
         gripWasPressed = gripPressed; //makes the event not fire again next frame
     }
 
@@ -95,7 +108,7 @@ public class Hand : MonoBehaviour
         Quaternion remaining = (holdTarget.rotation * Quaternion.Inverse(body.rotation)).normalized;
         remaining.ToAngleAxis(out float angle, out Vector3 axis);
         if (angle > 180f)
-            angle -= 360f; 
+            angle -= 360f; //shortest path is the other way
         body.angularVelocity = axis * (angle * Mathf.Deg2Rad) / Time.fixedDeltaTime;
 
         RecordVelocity(body);

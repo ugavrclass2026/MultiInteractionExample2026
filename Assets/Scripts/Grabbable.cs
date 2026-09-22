@@ -25,7 +25,6 @@ public class Grabbable : MonoBehaviour
     void Awake()
     {
         Body = GetComponent<Rigidbody>();
-        Body.maxAngularVelocity = 100f;
 
         visual = GetComponentInChildren<Renderer>();
         if (visual != null)

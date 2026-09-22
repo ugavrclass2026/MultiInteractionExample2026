@@ -749,6 +749,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1075920410}
+  - component: {fileID: 1075920411}
   m_Layer: 0
   m_Name: XR Origin
   m_TagString: Untagged
@@ -774,6 +775,23 @@ Transform:
   - {fileID: 2111162235}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1075920411
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1075920409}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e0cb9aa70a22847b5925ee5f067c10a9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.XR.CoreUtils::Unity.XR.CoreUtils.XROrigin
+  m_Camera: {fileID: 29878015}
+  m_OriginBaseGameObject: {fileID: 1075920409}
+  m_CameraFloorOffsetObject: {fileID: 0}
+  m_RequestedTrackingOriginMode: 2
+  m_CameraYOffset: 1.1176
 --- !u!1 &1171471429
 GameObject:
   m_ObjectHideFlags: 0
@@ -1208,9 +1226,29 @@ MonoBehaviour:
       m_Flags: 0
     m_Flags: 0
     m_Priority: 0
+  driveAction:
+    m_Name: Drive
+    m_Type: 0
+    m_ExpectedControlType: 
+    m_Id: 86d0ef94-5682-46e1-8a84-c08574c88503
+    m_Processors: 
+    m_Interactions: 
+    m_SingletonActionBindings:
+    - m_Name: 
+      m_Id: a6015f6a-0f9c-4013-9628-308b14c87006
+      m_Path: <XRController>{LeftHand}/thumbstick
+      m_Interactions: 
+      m_Processors: 
+      m_Groups: 
+      m_Action: Drive
+      m_Flags: 0
+    m_Flags: 0
+    m_Priority: 0
+  maxDrivingSpeed: 3
   graphics: {fileID: 873729361}
   grabPoint: {fileID: 877526832}
   rig: {fileID: 1075920410}
+  head: {fileID: 29878012}
   grabRadius: 0.1
   releaseWindow: 0.03
   smoothing: 0.5
@@ -1463,7 +1501,7 @@ Transform:
   m_GameObject: {fileID: 1415065699}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.2, y: 0.83, z: 0.5}
+  m_LocalPosition: {x: -0.2, y: 0.836, z: 0.5}
   m_LocalScale: {x: 0.1, y: 0.1, z: 0.1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2245,9 +2283,29 @@ MonoBehaviour:
       m_Flags: 0
     m_Flags: 0
     m_Priority: 0
+  driveAction:
+    m_Name: Drive
+    m_Type: 0
+    m_ExpectedControlType: 
+    m_Id: b6a284e0-2aee-443a-842f-6ef60bc53da0
+    m_Processors: 
+    m_Interactions: 
+    m_SingletonActionBindings:
+    - m_Name: 
+      m_Id: c4e38199-6ec6-47c5-a549-b5c196b09e3c
+      m_Path: <XRController>{RightHand}/thumbstick
+      m_Interactions: 
+      m_Processors: 
+      m_Groups: 
+      m_Action: Drive
+      m_Flags: 0
+    m_Flags: 0
+    m_Priority: 0
+  maxDrivingSpeed: 3
   graphics: {fileID: 565769756}
   grabPoint: {fileID: 523496779}
   rig: {fileID: 1075920410}
+  head: {fileID: 29878012}
   grabRadius: 0.1
   releaseWindow: 0.03
   smoothing: 0.5
