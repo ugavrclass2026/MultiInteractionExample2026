@@ -1208,6 +1208,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6d4cbabb5c81d46d38320411cbe2dba1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Hand
+  stickTeleports: 1
   gripAction:
     m_Name: Grip
     m_Type: 0
@@ -2265,6 +2266,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6d4cbabb5c81d46d38320411cbe2dba1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Hand
+  stickTeleports: 0
   gripAction:
     m_Name: Grip
     m_Type: 0

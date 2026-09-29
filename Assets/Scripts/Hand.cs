@@ -1,12 +1,17 @@
 using System.Collections.Generic;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 public class Hand : MonoBehaviour
 {
+    public enum TeleporterState {INACTIVE,ACTIVE};
+    TeleporterState teleporterState = TeleporterState.INACTIVE;
+    bool teleportPossible = false;
+    Vector3 teleportPoint; //where we would teleport to
+    [SerializeField] bool stickTeleports = true;
     public InputAction gripAction; //make sure you enable these and disable them (see below)
-    public InputAction driveAction = new InputAction(expectedControlType:"Vector2"); //this action is going to cause us to drive forward/backward and left/right
+    [SerializeField] InputAction driveAction = new InputAction(expectedControlType:"Vector2"); //this action is going to cause us to drive forward/backward and left/right
+    [SerializeField] InputAction teleportAction; // causes the teleporter to become active 
     public float maxDrivingSpeed = 3; //m//s
     public GameObject graphics; //makes it easy to disable or scale without affecting the logic or attached objects
     public Transform grabPoint; 
@@ -46,18 +51,22 @@ public class Hand : MonoBehaviour
     {
         gripAction.Enable();
         driveAction.Enable();
+        teleportAction.Enable();
     }
 
     void OnDisable()
     {
         gripAction.Disable();
         driveAction.Disable();
+        teleportAction.Disable();
         if (pulling == this)
             pulling = null;
     }
 
     void Update()
     {
+
+        Vector2 teleportControl = teleportAction.ReadValue<Vector2>();
 
         Vector2 driveControl = driveAction.ReadValue<Vector2>();
         Debug.Log(driveControl);
@@ -88,10 +97,58 @@ public class Hand : MonoBehaviour
         if (pulling == this)
             rig.position += pullAnchor - transform.position; //realigning my new hand position 
 
-        Vector3 driveDirection = head.forward;
-        driveDirection.y = 0;
-        driveDirection.Normalize();
-        rig.position += driveDirection * driveControl.y * maxDrivingSpeed * Time.deltaTime;
+        if(!stickTeleports){ //driving 
+            Vector3 driveDirection = head.forward;
+            driveDirection.y = 0;
+            driveDirection.Normalize();
+
+            Vector3 strafeDirection = head.right; 
+            strafeDirection.y = 0;
+            strafeDirection.Normalize();
+
+            rig.position += (driveDirection * driveControl.y * maxDrivingSpeed + 
+                            strafeDirection * driveControl.x * maxDrivingSpeed)
+                            * Time.deltaTime;
+        }
+
+        if(teleporterState == TeleporterState.INACTIVE && teleportControl.y > .1f)
+        {
+            //activate the teleporter line
+            teleporterState = TeleporterState.ACTIVE;
+        }else if(teleporterState == TeleporterState.ACTIVE && teleportControl.y < .05f)
+        {
+            //deactivate the telporter line AND do a teleport if the location is valid
+        }
+
+        if(teleporterState == TeleporterState.ACTIVE)
+        {
+            //test and render the teleporter line
+            //start a simulation of a teleporter arc
+            float dt = .1f; //"seconds"
+            Vector3 cp = transform.position; //start the current point at the hand position
+            Vector3 cv = transform.forward*teleportControl.y*5; //max of 5 meters per second
+            teleportPossible = false; //assume it's not possible to teleport
+            for(int i = 0; i < 50; i++) //max of 50 segments
+            {
+                //move the current point according to gravity and velocity
+                Vector3 np = cp + cv*dt;
+                cv += Physics.gravity*dt;
+
+                Vector3 between = np-cp;
+                //shoot a ray from cp to np
+                RaycastHit hit;
+                if(Physics.Raycast(cp,between.normalized, out hit, between.magnitude))
+                {
+                    if(hit.normal.y > .9f) //this is roughly horizontal
+                    {
+                        teleportPossible = true;
+                        break; 
+                    }
+                }
+            }
+
+
+        }
 
         gripWasPressed = gripPressed; //makes the event not fire again next frame
     }
