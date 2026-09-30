@@ -1209,6 +1209,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Hand
   stickTeleports: 1
+  teleporterLineSegmentPrefab: {fileID: 7492615409844098390, guid: 88fe3b76992914c9f81bd1c80ec6660d, type: 3}
   gripAction:
     m_Name: Grip
     m_Type: 0
@@ -1242,6 +1243,24 @@ MonoBehaviour:
       m_Processors: 
       m_Groups: 
       m_Action: Drive
+      m_Flags: 0
+    m_Flags: 0
+    m_Priority: 0
+  teleportAction:
+    m_Name: Teleport
+    m_Type: 0
+    m_ExpectedControlType: 
+    m_Id: 6fc1f403-b738-49bb-8ca2-df46f5c3a62f
+    m_Processors: 
+    m_Interactions: 
+    m_SingletonActionBindings:
+    - m_Name: 
+      m_Id: 5124ccd8-d085-427d-850f-d2845394c973
+      m_Path: <XRController>{LeftHand}/thumbstick
+      m_Interactions: 
+      m_Processors: 
+      m_Groups: 
+      m_Action: Teleport
       m_Flags: 0
     m_Flags: 0
     m_Priority: 0
@@ -2267,6 +2286,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Hand
   stickTeleports: 0
+  teleporterLineSegmentPrefab: {fileID: 7492615409844098390, guid: 88fe3b76992914c9f81bd1c80ec6660d, type: 3}
   gripAction:
     m_Name: Grip
     m_Type: 0
@@ -2301,6 +2321,16 @@ MonoBehaviour:
       m_Groups: 
       m_Action: Drive
       m_Flags: 0
+    m_Flags: 0
+    m_Priority: 0
+  teleportAction:
+    m_Name: Teleport
+    m_Type: 0
+    m_ExpectedControlType: 
+    m_Id: 5edcb741-e4e8-4d59-930b-d52dd85dee0c
+    m_Processors: 
+    m_Interactions: 
+    m_SingletonActionBindings: []
     m_Flags: 0
     m_Priority: 0
   maxDrivingSpeed: 3

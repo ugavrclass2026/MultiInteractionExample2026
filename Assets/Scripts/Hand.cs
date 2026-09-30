@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Composites;
 
 public class Hand : MonoBehaviour
 {
@@ -9,9 +10,13 @@ public class Hand : MonoBehaviour
     bool teleportPossible = false;
     Vector3 teleportPoint; //where we would teleport to
     [SerializeField] bool stickTeleports = true;
+    GameObject[] teleportSegments = new GameObject[50];
+    [SerializeField] GameObject teleporterLineSegmentPrefab;
+    bool snapRotatePossible = true;
     public InputAction gripAction; //make sure you enable these and disable them (see below)
     [SerializeField] InputAction driveAction = new InputAction(expectedControlType:"Vector2"); //this action is going to cause us to drive forward/backward and left/right
     [SerializeField] InputAction teleportAction; // causes the teleporter to become active 
+
     public float maxDrivingSpeed = 3; //m//s
     public GameObject graphics; //makes it easy to disable or scale without affecting the logic or attached objects
     public Transform grabPoint; 
@@ -45,6 +50,11 @@ public class Hand : MonoBehaviour
     {
         holdTarget = new GameObject("Hold Target").transform;
         holdTarget.SetParent(grabPoint, false);
+        for(int i = 0; i < 50; i++)
+        {
+            teleportSegments[i] = Instantiate<GameObject>(teleporterLineSegmentPrefab);
+            teleportSegments[i].SetActive(false);
+        }
     }
 
     void OnEnable()
@@ -111,13 +121,28 @@ public class Hand : MonoBehaviour
                             * Time.deltaTime;
         }
 
-        if(teleporterState == TeleporterState.INACTIVE && teleportControl.y > .1f)
+        if(teleporterState == TeleporterState.INACTIVE && teleportControl.y > .9f)
         {
             //activate the teleporter line
             teleporterState = TeleporterState.ACTIVE;
-        }else if(teleporterState == TeleporterState.ACTIVE && teleportControl.y < .05f)
+        }else if(teleporterState == TeleporterState.ACTIVE && teleportControl.y < .85f)
         {
             //deactivate the telporter line AND do a teleport if the location is valid
+
+            //find the point below our head and move our rig to have the offset between this point and our target point
+
+            Vector3 headInRig = rig.transform.InverseTransformPoint(head.transform.position);
+            Vector3 footInRig = new Vector3(headInRig.x,0,headInRig.z);
+            Vector3 footInWorld = rig.transform.TransformPoint(footInRig);
+
+            Vector3 offset = teleportPoint - footInWorld;
+            rig.Translate(offset,Space.World);
+
+            for(int i = 0; i < 50; i++)
+            {
+                teleportSegments[i].SetActive(false);
+            }
+            teleporterState = TeleporterState.INACTIVE;
         }
 
         if(teleporterState == TeleporterState.ACTIVE)
@@ -126,7 +151,7 @@ public class Hand : MonoBehaviour
             //start a simulation of a teleporter arc
             float dt = .1f; //"seconds"
             Vector3 cp = transform.position; //start the current point at the hand position
-            Vector3 cv = transform.forward*teleportControl.y*5; //max of 5 meters per second
+            Vector3 cv = transform.forward*5; //max of 5 meters per second
             teleportPossible = false; //assume it's not possible to teleport
             for(int i = 0; i < 50; i++) //max of 50 segments
             {
@@ -137,18 +162,54 @@ public class Hand : MonoBehaviour
                 Vector3 between = np-cp;
                 //shoot a ray from cp to np
                 RaycastHit hit;
-                if(Physics.Raycast(cp,between.normalized, out hit, between.magnitude))
+                float distance = between.magnitude;
+                teleportSegments[i].transform.position = cp;
+                teleportSegments[i].transform.LookAt(np);
+                teleportSegments[i].transform.localScale = new Vector3(1,1,distance);
+                teleportSegments[i].SetActive(true);
+                
+                if(Physics.Raycast(cp,between.normalized, out hit, distance))
                 {
+
                     if(hit.normal.y > .9f) //this is roughly horizontal
                     {
                         teleportPossible = true;
-                        break; 
+                        teleportPoint = hit.point;
+                        
                     }
+                    teleportSegments[i].transform.localScale = new Vector3(1,1,hit.distance);
+                    //turn off subsequent points
+                    for(int j = i + 1; j < 50; j++)
+                    {
+                        //if (!teleportSegments[j].activeSelf)
+                        //{
+                        //    break; //this and subsequent are inactive
+                        //}
+                        teleportSegments[j].SetActive(false);
+                    }
+                    break; 
                 }
+
+                cp = np;
+                
             }
 
 
         }
+
+        if(snapRotatePossible && Mathf.Abs(teleportControl.x) > .9f)
+        {
+            //make the rig rotate, but keep the player in the same world position
+
+            Vector3 playerPos = head.transform.position;
+            rig.RotateAround(playerPos,Vector3.up,Mathf.Sign(teleportControl.x)*15);
+
+            snapRotatePossible = false;
+        }else if(!snapRotatePossible && Mathf.Abs(teleportControl.x) < .85f)
+        {
+            snapRotatePossible = true;
+        }
+
 
         gripWasPressed = gripPressed; //makes the event not fire again next frame
     }
