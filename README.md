@@ -64,3 +64,25 @@ a counter lets two hands highlight the same object at once). Objects need a Rigi
 sits at real head height. A table 0.55 m in front holds a **Cube**, **Ball** and **Wand** (snap to hand; the wand's attach
 point is on its handle so it snaps in pointing forward) and a **Book** (hand snaps to object). A **Crate** on the floor also
 uses hand-snaps-to-object. Physics runs at 90 Hz to match the headset.
+
+## Avatar demo (`Assets/AvatarDemo/AvatarDemo.unity`)
+
+Half-body avatars, a stereo mirror, and hand tracking on Quest 3. The scene is generated from `InteractionDemo`:
+**Avatar Demo ▸ Build Scene** (`Assets/AvatarDemo/Editor/AvatarDemoBuilder.cs`). Batch build:
+`Unity -batchmode -quit -projectPath . -buildTarget Android -executeMethod AvatarDemoBuilder.BuildApk` →
+`Builds/AvatarDemo.apk` (app id `com.ugavr.avatardemo`).
+
+- **Avatars:** head + hands; a robot with IK arms; a Rocketbox human (MIT) with IK arms and tracked fingers
+- **Input:** hand tracking (XR Hands, 26 joints) and controllers at the same time (`XR_META_simultaneous_hands_and_controllers`)
+- **Pinch:** grab and throw near an object; pinch in the air to pull yourself
+- **Torso:** turns with the head and hands; chest twists toward the head
+- **Body tracking (optional):** Meta inside-out body tracking (`XR_FB_body_tracking`, high fidelity); tracked shoulders turn the torso, tracked elbows are the IK poles. Pauses simultaneous hands/controllers while on.
+- **Robot arms fit:** arm bones stretch to the user's longest reach
+- **Mirror:** one camera per eye at the eye's reflection, off-axis frustum through the mirror (`StereoMirror`)
+- **First person:** full avatar on layer `MirrorOnly`, headless copy on `FirstPersonOnly` (`FirstPersonHead`)
+- **Buttons** (poke with a fingertip or controller): next avatar, hands/controllers, mirror, calibrate height, body tracking, robot arms fit
+
+Scripts: `HalfBodyAvatar` (per-frame loop), `TwoBoneIK`, `HandSource`, `BodySource`, `MetaBodyFeature` (OpenXR feature calling
+Meta's extensions directly), `PinchGrabber`, `StereoMirror`, `FirstPersonHead`, `LimbVisual`, `AbstractAvatar`, `JointDots`,
+`PokeButton`, `AvatarSwitcher`. Project changes: `com.unity.xr.hands`, OpenXR Hand Tracking + Meta Hand Tracking Aim +
+the AvatarDemo feature (Android), layers `MirrorSurface`, `MirrorOnly`, `FirstPersonOnly`.
