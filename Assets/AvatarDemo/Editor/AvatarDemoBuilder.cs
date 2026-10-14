@@ -54,6 +54,7 @@ public static class AvatarDemoBuilder
 
         var bs = new GameObject("Body Source").AddComponent<BodySource>();
         bs.transform.SetParent(demo); bs.trackingSpace = origin;
+        hs.body = bs;
 
         var jd = new GameObject("Hand Joints").AddComponent<JointDots>();
         jd.transform.SetParent(demo); jd.hands = hs; jd.material = orange;
@@ -94,6 +95,11 @@ public static class AvatarDemoBuilder
             g.transform.SetParent(demo); g.hands = hs; g.isLeft = left; g.rig = origin;
             g.cursor = Prim(PrimitiveType.Sphere, g.transform, Vector3.zero, Vector3.one * 0.015f, accent).transform;
         }
+
+        // Quest controller models, in the hand or put down (detached)
+        var cm = new GameObject("Controller Models").AddComponent<ControllerModels>();
+        cm.transform.SetParent(demo); cm.hands = hs; cm.trackingSpace = origin;
+        cm.leftModel = ControllerModel(cm.transform, "left"); cm.rightModel = ControllerModel(cm.transform, "right");
 
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
@@ -263,19 +269,19 @@ public static class AvatarDemoBuilder
         var back = Prim(PrimitiveType.Cube, panel, new Vector3(0, 0.1f, 0.02f), new Vector3(0.52f, 0.5f, 0.02f), frame);
         Object.DestroyImmediate(back.GetComponent<Collider>());
         var items = new (string, UnityEngine.Events.UnityAction)[]
-        { ("Next avatar", sw.NextAvatar), ("Hands / controllers", sw.ToggleHands), ("Body tracking", sw.ToggleBody), ("Mirror", sw.ToggleMirror),
+        { ("Next\navatar", sw.NextAvatar), ("Tracking\nmode", sw.NextMode), ("Mirror", sw.ToggleMirror),
           ("Height -", sw.HeightDown), ("Height +", sw.HeightUp), ("Arms -", sw.ArmsDown), ("Arms +", sw.ArmsUp) };
         for (int i = 0; i < items.Length; i++)
         {
-            float x = -0.18f + (i % 4) * 0.12f, y = i < 4 ? 0.07f : -0.08f;
-            var b = new GameObject("Button: " + items[i].Item1).transform; b.SetParent(panel, false); b.localPosition = new Vector3(x, y, 0f);
+            bool top = i < 3;
+            float x = top ? -0.12f + i * 0.12f : -0.18f + (i - 3) * 0.12f, y = top ? 0.07f : -0.08f;
+            var b = new GameObject("Button: " + items[i].Item1.Replace("\n", " ")).transform; b.SetParent(panel, false); b.localPosition = new Vector3(x, y, 0f);
             var col = b.gameObject.AddComponent<BoxCollider>(); col.isTrigger = true; col.size = new Vector3(0.08f, 0.08f, 0.06f); col.center = new Vector3(0, 0, -0.02f);
             var capT = Prim(PrimitiveType.Cube, b, Vector3.zero, new Vector3(0.07f, 0.07f, 0.025f), cap).transform;
             Object.DestroyImmediate(capT.GetComponent<Collider>());
             var pb = b.gameObject.AddComponent<PokeButton>(); pb.cap = capT;
             UnityEventTools.AddPersistentListener(pb.onPress, items[i].Item2);
-            string label = items[i].Item1.Contains("/") || items[i].Item1.StartsWith("Next") || items[i].Item1.StartsWith("Body") ? items[i].Item1.Replace(" / ", "/\n").Replace(" ", "\n") : items[i].Item1;
-            Text(b, new Vector3(0, -0.06f, -0.015f), label, 0.004f);
+            Text(b, new Vector3(0, -0.06f, -0.015f), items[i].Item1, 0.004f);
         }
         sw.status = Text(panel, new Vector3(0, 0.27f, -0.015f), "", 0.0038f);
     }
@@ -313,6 +319,24 @@ public static class AvatarDemoBuilder
         return m;
     }
 
+    static Transform ControllerModel(Transform parent, string side)
+    {
+        var fbx = AssetDatabase.LoadAssetAtPath<GameObject>($"{Root}/Controllers/QuestTouchPlus_{side}.fbx");
+        var go = (GameObject)PrefabUtility.InstantiatePrefab(fbx, parent);
+        go.name = "Quest controller " + side;
+        var m = TexMat("QuestTouchPlus_" + side, $"{Root}/Controllers/QuestTouchPlus_{side}.png", false);
+        var b = new Bounds(); bool first = true;
+        foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+        {
+            r.sharedMaterials = Enumerable.Repeat(m, r.sharedMaterials.Length).ToArray();
+            r.shadowCastingMode = ShadowCastingMode.Off;
+            if (first) { b = r.bounds; first = false; } else b.Encapsulate(r.bounds);
+        }
+        Debug.Log($"[AvatarDemo] controller model {side}: bounds center {b.center - go.transform.position:F3} size {b.size:F3}");
+        go.SetActive(false);
+        return go.transform;
+    }
+
     static Material TexMat(string name, string texPath, bool cutout)
     {
         var m = Mat(name, Color.white);
@@ -334,6 +358,7 @@ public static class AvatarDemoBuilder
             imp.materialImportMode = ModelImporterMaterialImportMode.ImportStandard;
             imp.SaveAndReimport();
         }
+        if (!imp.isReadable) { imp.isReadable = true; imp.SaveAndReimport(); }   // FirstPersonHead copies the mesh
         foreach (var t in new[] { "m002_body_color", "m002_head_color", "m002_opacity_color" })
         {
             var ti = (TextureImporter)AssetImporter.GetAtPath(Root + "/Avatars/Rocketbox_Male_Adult_01/Textures/" + t + ".png");
@@ -366,6 +391,9 @@ public static class AvatarDemoBuilder
         var mbf = s.GetFeature<MetaBodyFeature>();
         if (mbf && !mbf.enabled) mbf.enabled = true;
         Debug.Log($"[AvatarDemo] MetaBodyFeature: {(mbf ? mbf.enabled.ToString() : "missing")}");
+        var det = s.GetFeature<DetachedControllersFeature>();
+        if (det && !det.enabled) det.enabled = true;
+        Debug.Log($"[AvatarDemo] DetachedControllersFeature: {(det ? det.enabled.ToString() : "missing")}");
         var aim = s.GetFeature<UnityEngine.XR.Hands.OpenXR.MetaHandTrackingAim>();
         if (aim && !aim.enabled) aim.enabled = true;
         EditorUtility.SetDirty(s);

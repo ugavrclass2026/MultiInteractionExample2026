@@ -12,8 +12,9 @@ using UnityEditor;
 ///   - XR_FB_body_tracking (+ XR_META_body_tracking_fidelity): 70 upper-body and hand joints from the headset.
 ///     Fidelity High is inside-out body tracking on Quest 3 (the cameras see elbows and torso).
 ///   - XR_META_simultaneous_hands_and_controllers: hand tracking and controllers at the same time.
-/// Meta's forum reports that simultaneous mode can't run while body tracking is on, so turning body
-/// tracking on pauses it and turning it off resumes it.
+/// The two don't run together (Quest 3, 2026-10-14): with simultaneous mode on, xrCreateBodyTrackerFB fails
+/// with -2. So body tracking pauses simultaneous mode (the headset then tracks hands OR controllers).
+/// AvatarSwitcher's tracking modes decide when it is on.
 /// Poses are converted from OpenXR (right-handed) to Unity (left-handed) and are relative to the app's
 /// tracking space (the XR Origin).
 /// </summary>
@@ -59,6 +60,11 @@ public class MetaBodyFeature : OpenXRFeature
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int RequestFidelity(ulong tracker, int fidelity);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int SimultaneousCall(ulong session, ref TypedInfo info);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int ConvertTimespec(ulong instance, ref Timespec ts, out long time);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int StringToPath(ulong instance, [MarshalAs(UnmanagedType.LPStr)] string s, out ulong path);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int PathToString(ulong instance, ulong path, uint capacity, out uint count, IntPtr buffer);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int GetCurrentProfile(ulong session, ulong topLevelPath, ref ProfileState state);
+    [StructLayout(LayoutKind.Sequential)] struct ProfileState { public int type; public IntPtr next; public ulong profile; }
+    StringToPath toPath; PathToString toString; GetCurrentProfile currentProfile;
 
     CreateBodyTracker createTracker; DestroyBodyTracker destroyTracker; LocateBodyJoints locate;
     RequestFidelity requestFidelity; SimultaneousCall resumeSim, pauseSim; ConvertTimespec convertTime;
@@ -99,6 +105,9 @@ public class MetaBodyFeature : OpenXRFeature
         resumeSim = Get<SimultaneousCall>("xrResumeSimultaneousHandsAndControllersTrackingMETA");
         pauseSim = Get<SimultaneousCall>("xrPauseSimultaneousHandsAndControllersTrackingMETA");
         convertTime = Get<ConvertTimespec>("xrConvertTimespecTimeToTimeKHR");
+        toPath = Get<StringToPath>("xrStringToPath");
+        toString = Get<PathToString>("xrPathToString");
+        currentProfile = Get<GetCurrentProfile>("xrGetCurrentInteractionProfile");
         Status = $"body {(createTracker != null ? "available" : "unsupported")}, simultaneous {(resumeSim != null ? "available" : "unsupported")}";
         Debug.Log("[AvatarDemo] MetaBodyFeature: " + Status);
     }
@@ -123,6 +132,20 @@ public class MetaBodyFeature : OpenXRFeature
         return r == 0;
     }
 
+    /// <summary>Diagnostics: the interaction profile the runtime reports for a top-level path, e.g. /user/hand/left.</summary>
+    public string CurrentProfile(string userPath)
+    {
+        if (toPath == null || currentProfile == null || toString == null || session == 0) return "n/a";
+        if (toPath(instance, userPath, out var top) != 0) return "bad path";
+        var st = new ProfileState { type = 53 /* XR_TYPE_INTERACTION_PROFILE_STATE */ };
+        int r = currentProfile(session, top, ref st);
+        if (r != 0) return "error " + r;
+        if (st.profile == 0) return "none";
+        var buf = Marshal.AllocHGlobal(256);
+        try { return toString(instance, st.profile, 256, out var n, buf) == 0 ? Marshal.PtrToStringAnsi(buf).Replace("/interaction_profiles/", "") : "?"; }
+        finally { Marshal.FreeHGlobal(buf); }
+    }
+
     /// <summary>Start or stop body tracking. High fidelity = the headset cameras track elbows and torso (Quest 3).</summary>
     public bool SetBodyTracking(bool on, bool highFidelity = true)
     {
@@ -132,15 +155,14 @@ public class MetaBodyFeature : OpenXRFeature
             tracker = 0;
             if (locations != IntPtr.Zero) { Marshal.FreeHGlobal(locations); locations = IntPtr.Zero; }
             if (jointBuf != IntPtr.Zero) { Marshal.FreeHGlobal(jointBuf); jointBuf = IntPtr.Zero; }
-            SetSimultaneous(true);
             return true;
         }
         if (tracker != 0) return true;
         if (createTracker == null || session == 0) { Status = "body tracking unsupported"; return false; }
-        SetSimultaneous(false);                         // reported not to work alongside body tracking
+        if (SimultaneousOn) SetSimultaneous(false);
         var info = new BodyTrackerCreateInfo { type = XR_TYPE_BODY_TRACKER_CREATE_INFO_FB, jointSet = 0 };
         int r = createTracker(session, ref info, out tracker);
-        if (r != 0) { tracker = 0; Status = "body tracker failed: " + r; Debug.Log("[AvatarDemo] " + Status); SetSimultaneous(true); return false; }
+        if (r != 0) { tracker = 0; Status = "body tracker failed: " + r; Debug.Log("[AvatarDemo] " + Status); return false; }
         if (requestFidelity != null) Debug.Log("[AvatarDemo] body fidelity request: " + requestFidelity(tracker, highFidelity ? 2 : 1));
         jointBuf = Marshal.AllocHGlobal(JointLocationSize * JointCount);
         locations = Marshal.AllocHGlobal(Marshal.SizeOf<BodyJointLocations>());

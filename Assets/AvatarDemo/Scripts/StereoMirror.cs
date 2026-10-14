@@ -34,7 +34,10 @@ public class StereoMirror : MonoBehaviour
             var go = new GameObject(i == 0 ? "Mirror Eye L" : "Mirror Eye R");
             go.transform.SetParent(transform, false);
             var c = go.AddComponent<Camera>();
-            c.stereoTargetEye = StereoTargetEyeMask.None;   // a plain camera, not an XR one
+            // a plain camera rendering to a texture, not an XR camera
+            if (!go.TryGetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>(out var urp))
+                urp = go.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+            urp.allowXRRendering = false;
             c.targetTexture = rts[i];
             c.cullingMask = reflect;
             c.depth = -10;                                  // render before the headset's camera

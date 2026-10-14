@@ -16,17 +16,12 @@ public class HandSource : MonoBehaviour
 
     public Transform trackingSpace;                 // XR Origin: hand-tracking poses are relative to it
     public Transform leftController, rightController;
+    [Tooltip("Optional: with body tracking on, a hand with neither hand tracking nor a controller uses the body tracker's hand joints")]
+    public BodySource body;
     // controller -> wrist, in the controller's aim frame (the wrist sits behind the grip)
     public Vector3 wristOffset = new Vector3(0f, -0.02f, -0.08f);
     [Tooltip("Extra rotation of the avatar hand relative to the controller's aim pose (degrees), per hand")]
     public Vector3 leftHandEuler = new Vector3(0f, 0f, 0f), rightHandEuler = new Vector3(0f, 0f, 0f);
-    [Tooltip("With hands and controllers both tracked, a hand this close to a controller that is moving is holding it")]
-    public float holdingDistance = 0.2f;
-    [Tooltip("A controller that hasn't moved for this long is lying somewhere, not in a hand (s)")]
-    public float stillTime = 0.75f;
-    readonly Vector3[] lastCtrlPos = new Vector3[2];
-    readonly float[] lastMoved = new float[2];
-    readonly bool[] lastWasController = new bool[2];
 
     // the controller's aim (pointer) pose: its forward is where the controller points, which is close to
     // the direction of the knuckles; the grip pose's axes run along the handle instead
@@ -37,7 +32,7 @@ public class HandSource : MonoBehaviour
 
     public class Hand
     {
-        public bool isLeft, tracked, fromHandTracking, fromController;
+        public bool isLeft, tracked, fromHandTracking, fromController, fromBody;
         public Vector3 wrist;          // world position of the wrist
         public Vector3 fingers;        // unit direction the fingers point
         public Vector3 palm;           // unit direction the palm faces
@@ -50,9 +45,8 @@ public class HandSource : MonoBehaviour
     public System.Func<Hand, float, (Vector3, Vector3, Vector3)> demo;
 
     XRHandSubsystem subsystem;
+    public XRHandSubsystem Subsystem => subsystem;
     static readonly List<XRHandSubsystem> found = new List<XRHandSubsystem>();
-
-    public static string ModeLabel(Mode m) => m == Mode.Auto ? "hands or controllers" : "controllers only";
 
     void Update()
     {
@@ -64,6 +58,12 @@ public class HandSource : MonoBehaviour
         }
         Fill(left, leftController, subsystem != null ? subsystem.leftHand : default);
         Fill(right, rightController, subsystem != null ? subsystem.rightHand : default);
+        if (Time.frameCount % 144 == 0)
+            Debug.Log($"[AvatarDemo] hands: subsystems {found.Count}, running {(subsystem != null)}, " +
+                      $"L hand {(subsystem != null && subsystem.leftHand.isTracked)} ctrl {tracked[0].ReadValue<float>():F0} -> {Src(left)}, " +
+                      $"R hand {(subsystem != null && subsystem.rightHand.isTracked)} ctrl {tracked[1].ReadValue<float>():F0} -> {Src(right)}, mode {mode}, " +
+                      $"detached L {Det(true)} R {Det(false)}");
+        if (Time.frameCount % 144 == 72) Profiles();
     }
 
     void Fill(Hand h, Transform controller, XRHand xr)
@@ -71,6 +71,7 @@ public class HandSource : MonoBehaviour
         h.hasJoints = false;
         h.fromHandTracking = false;
         h.fromController = false;
+        h.fromBody = false;
         if (demo != null)
         {
             (h.wrist, h.fingers, h.palm) = demo(h, Time.time);
@@ -86,38 +87,11 @@ public class HandSource : MonoBehaviour
                 if (xr.GetJoint(XRHandJointIDUtility.FromIndex(j)).TryGetPose(out var jp)) h.joints[j] = ToWorld(jp).position;
             h.hasJoints = true;
         }
-        // Both tracked (simultaneous hands and controllers): a hand right at its controller is holding it.
-        // A controller counts as held only while it moves; a controller set down stops moving.
+        // Controller first. With simultaneous hands and controllers on, Quest reports a controller at
+        // /user/hand/left only while it is in that hand; a controller put down moves to the detached path.
         if (ctrl)
         {
-            // local position: moving the rig (locomotion) must not count as the controller moving
-            if ((controller.localPosition - lastCtrlPos[i]).sqrMagnitude > 0.003f * 0.003f) lastMoved[i] = Time.time;
-            lastCtrlPos[i] = controller.localPosition;
-        }
-        bool held = ctrl && Time.time - lastMoved[i] < stillTime;
-        // Both tracked (simultaneous hands and controllers): use the hand unless it is holding a moving controller.
-        if (hand && held && Vector3.Distance(h.joints[XRHandJointID.Wrist.ToIndex()], ControllerWrist(controller, i)) < holdingDistance) hand = false;
-
-        if (hand)
-        {
-            // Directions from the joints themselves, so no axis convention is assumed:
-            // fingers = wrist -> middle knuckle; palm = fingers x (little knuckle -> index knuckle), flipped for the left hand.
-            Vector3 J(XRHandJointID id) => h.joints[id.ToIndex()];
-            h.wrist = J(XRHandJointID.Wrist);
-            h.fingers = (J(XRHandJointID.MiddleProximal) - h.wrist).normalized;
-            Vector3 across = J(XRHandJointID.IndexProximal) - J(XRHandJointID.LittleProximal);
-            h.palm = Vector3.Cross(h.fingers, across).normalized * (h.isLeft ? -1f : 1f);
-            h.fromHandTracking = true;
-            h.tracked = true;
-            lastWasController[i] = false;
-            return;
-        }
-        h.hasJoints = false;
-        // Controller: when it is moving, when hand tracking is off, or when it was already the source
-        // (a controller held still in a hand is not hand-tracked, and must not drop out)
-        if (ctrl && (held || mode == Mode.ControllersOnly || lastWasController[i]))
-        {
-            lastWasController[i] = true;
+            h.hasJoints = false;
             Quaternion aim = AimRotation(controller, i) * Quaternion.Euler(h.isLeft ? leftHandEuler : rightHandEuler);
             h.wrist = ControllerWrist(controller, i);
             h.fingers = aim * Vector3.forward;
@@ -128,7 +102,46 @@ public class HandSource : MonoBehaviour
             h.tracked = true;
             return;
         }
+        if (hand)
+        {
+            FromJoints(h);
+            h.fromHandTracking = true;
+            h.tracked = true;
+            return;
+        }
+        h.hasJoints = false;
+        // Body tracking on: the headset tracks hands OR controllers, so a free hand next to a held controller
+        // has no hand tracking. The body tracker still estimates that hand.
+        if (FromBody(h)) return;
         h.tracked = false;
+    }
+
+    // Directions from the joints themselves, so no axis convention is assumed:
+    // fingers = wrist -> middle knuckle; palm = fingers x (little knuckle -> index knuckle), flipped for the left hand.
+    static void FromJoints(Hand h)
+    {
+        Vector3 J(XRHandJointID id) => h.joints[id.ToIndex()];
+        h.wrist = J(XRHandJointID.Wrist);
+        h.fingers = (J(XRHandJointID.MiddleProximal) - h.wrist).normalized;
+        Vector3 across = J(XRHandJointID.IndexProximal) - J(XRHandJointID.LittleProximal);
+        h.palm = Vector3.Cross(h.fingers, across).normalized * (h.isLeft ? -1f : 1f);
+    }
+
+    // XrBodyJointFB has each hand as palm, wrist, then the other 24 joints in OpenXR hand-joint order.
+    // Unity's XRHandJointID index order is wrist (0), palm (1), then the same 24.
+    bool FromBody(Hand h)
+    {
+        if (body == null || !body.Tracked) return false;
+        int b = h.isLeft ? MetaBodyFeature.LeftWrist - 1 : MetaBodyFeature.RightWrist - 1;   // the palm joint
+        if (!body.Valid(b + 1) || !body.Valid(b + 7) || !body.Valid(b + 12) || !body.Valid(b + 22)) return false;
+        h.joints[0] = body.pos[b + 1];
+        h.joints[1] = body.pos[b];
+        for (int j = 2; j < h.joints.Length; j++) h.joints[j] = body.pos[b + j];
+        h.hasJoints = true;
+        FromJoints(h);
+        h.fromBody = true;
+        h.tracked = true;
+        return true;
     }
 
     Quaternion AimRotation(Transform controller, int i)
@@ -145,4 +158,21 @@ public class HandSource : MonoBehaviour
         : p;
 
     public Hand Get(bool isLeft) => isLeft ? left : right;
+    /// <summary>The controller in that hand is tracked (held; a put-down controller is a DetachedTouchController).</summary>
+    public bool ControllerTracked(bool isLeft) => tracked[isLeft ? 0 : 1].ReadValue<float>() > 0.5f;
+    string lastDevices;
+    void Profiles()
+    {
+        var f = MetaBodyFeature.Instance;
+        if (f != null)
+            Debug.Log("[AvatarDemo] profiles: " + string.Join(", ", System.Array.ConvertAll(
+                new[] { "/user/hand/left", "/user/hand/right", "/user/detached_controller_meta/left", "/user/detached_controller_meta/right" },
+                p => p.Replace("/user/", "") + " " + f.CurrentProfile(p))));
+        var names = new List<string>();
+        foreach (var d in UnityEngine.InputSystem.InputSystem.devices) names.Add($"{d.layout}:{d.description.product}");
+        string all = string.Join(" | ", names);
+        if (all != lastDevices) { lastDevices = all; Debug.Log("[AvatarDemo] devices: " + all); }
+    }
+    static string Det(bool left) { var d = DetachedControllersFeature.Find(left); return d == null ? "none" : d.isTracked.isPressed ? "tracked" : "untracked"; }
+    static string Src(Hand h) => h.fromHandTracking ? "hand" : h.fromController ? "controller" : h.fromBody ? "body" : "-";
 }

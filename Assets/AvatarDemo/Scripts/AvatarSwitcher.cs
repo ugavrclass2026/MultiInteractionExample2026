@@ -3,8 +3,9 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// The demo's control panel: which avatar is on, where the hands come from, whether the mirror is on,
-/// and height calibration. The poke buttons call these; N/H/M/C do the same on a keyboard in the editor.
+/// The demo's control panel: which avatar is on, the tracking mode, whether the mirror is on, and the
+/// avatar's height and arm length. The poke buttons call these; N/T/M and the arrow keys do the same on a
+/// keyboard in the editor.
 /// If Application.persistentDataPath/demo.txt exists, the hands move by themselves and the avatar
 /// changes every few seconds (for recording a demo without wearing the headset).
 /// </summary>
@@ -22,6 +23,17 @@ public class AvatarSwitcher : MonoBehaviour
     public Transform hmd, floor;
     public TextMesh status;
 
+    /// <summary>The combinations Quest allows. Body tracking can't run with simultaneous hands and controllers.</summary>
+    public enum TrackingMode { Simultaneous, HandsOrControllers, HandsOrControllersBody, ControllersOnly }
+    public TrackingMode mode = TrackingMode.Simultaneous;
+    public static string Label(TrackingMode m) => m switch
+    {
+        TrackingMode.Simultaneous => "hands + controllers at once",
+        TrackingMode.HandsOrControllers => "hands or controllers",
+        TrackingMode.HandsOrControllersBody => "hands or controllers + body tracking",
+        _ => "controllers only",
+    };
+
     bool demo;
     float demoNext;
 
@@ -29,21 +41,28 @@ public class AvatarSwitcher : MonoBehaviour
     {
         demo = File.Exists(Path.Combine(Application.persistentDataPath, "demo.txt"));
         if (demo) { hands.demo = DemoHands; demoNext = Time.time + 6f; Debug.Log("[AvatarDemo] demo mode"); }
-        if (File.Exists(Path.Combine(Application.persistentDataPath, "body.txt")) && body) body.Set(true);   // test hook: start with body tracking on
+        if (File.Exists(Path.Combine(Application.persistentDataPath, "body.txt"))) mode = TrackingMode.HandsOrControllersBody;   // test hook
         Apply();
+        SetMode(mode);
     }
 
     public void NextAvatar() { current = (current + 1) % avatars.Length; Apply(); }
 
-    public void ToggleHands()
+    public void NextMode() => SetMode((TrackingMode)(((int)mode + 1) % 4));
+
+    public void SetMode(TrackingMode m)
     {
-        hands.mode = hands.mode == HandSource.Mode.Auto ? HandSource.Mode.ControllersOnly : HandSource.Mode.Auto;
-        Apply();
+        mode = m;
+        hands.mode = m == TrackingMode.ControllersOnly ? HandSource.Mode.ControllersOnly : HandSource.Mode.Auto;
+        if (body) body.Set(m == TrackingMode.HandsOrControllersBody);       // turning it on pauses simultaneous mode
+        var f = MetaBodyFeature.Instance;
+        bool sim = m == TrackingMode.Simultaneous;
+        if (f != null && f.SimultaneousOn != sim && !(sim && f.BodyTrackingOn)) f.SetSimultaneous(sim);
+        Debug.Log("[AvatarDemo] tracking mode: " + Label(m));
+        UpdateStatus();
     }
 
     public void ToggleMirror() { mirror.SetActive(!mirror.activeSelf); Apply(); }
-
-    public void ToggleBody() { if (body) body.Toggle(); UpdateStatus(); }
 
     HalfBodyAvatar Current => avatars[current].root.GetComponent<HalfBodyAvatar>();
 
@@ -68,13 +87,12 @@ public class AvatarSwitcher : MonoBehaviour
     void UpdateStatus()
     {
         if (!status) return;
-        string Src(HandSource.Hand h) => h.fromHandTracking ? "hand" : h.fromController ? "controller" : "-";
-        var mb = MetaBodyFeature.Instance;
+        string Src(HandSource.Hand h) => h.fromHandTracking ? "hand" : h.fromController ? "controller" : h.fromBody ? "body" : "-";
         var cur = Current;
         status.text = $"Avatar: {avatars[current].label}\n" +
-                      $"Hands: {HandSource.ModeLabel(hands.mode)} - L {Src(hands.left)}, R {Src(hands.right)}" +
-                      (mb != null && mb.SimultaneousOn ? " (simultaneous)" : "") + "\n" +
-                      $"Body tracking: {(body ? body.Status : "-")}\n" +
+                      $"Tracking: {Label(mode)}\n" +
+                      $"L {Src(hands.left)}, R {Src(hands.right)}" +
+                      (mode == TrackingMode.HandsOrControllersBody && body ? $"   body: {body.Status}" : "") + "\n" +
                       (cur ? $"Height x{cur.transform.localScale.x:F2}   Arms x{cur.ArmScale:F2}   " : "") + $"Mirror: {(mirror.activeSelf ? "on" : "off")}";
     }
 
@@ -84,9 +102,8 @@ public class AvatarSwitcher : MonoBehaviour
         if (kb != null)
         {
             if (kb.nKey.wasPressedThisFrame) NextAvatar();
-            if (kb.hKey.wasPressedThisFrame) ToggleHands();
+            if (kb.tKey.wasPressedThisFrame) NextMode();
             if (kb.mKey.wasPressedThisFrame) ToggleMirror();
-            if (kb.bKey.wasPressedThisFrame) ToggleBody();
             if (kb.upArrowKey.wasPressedThisFrame) HeightUp();
             if (kb.downArrowKey.wasPressedThisFrame) HeightDown();
             if (kb.rightArrowKey.wasPressedThisFrame) ArmsUp();
