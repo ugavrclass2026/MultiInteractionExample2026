@@ -1210,6 +1210,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Hand
   stickTeleports: 1
   teleporterLineSegmentPrefab: {fileID: 7492615409844098390, guid: 88fe3b76992914c9f81bd1c80ec6660d, type: 3}
+  teleportMarkerPrefab: {fileID: 6538757239165324752, guid: 04d90cf085aca486289a10c3925b7562, type: 3}
   gripAction:
     m_Name: Grip
     m_Type: 0
@@ -2287,6 +2288,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Hand
   stickTeleports: 0
   teleporterLineSegmentPrefab: {fileID: 7492615409844098390, guid: 88fe3b76992914c9f81bd1c80ec6660d, type: 3}
+  teleportMarkerPrefab: {fileID: 6538757239165324752, guid: 04d90cf085aca486289a10c3925b7562, type: 3}
   gripAction:
     m_Name: Grip
     m_Type: 0

@@ -12,6 +12,8 @@ public class Hand : MonoBehaviour
     [SerializeField] bool stickTeleports = true;
     GameObject[] teleportSegments = new GameObject[50];
     [SerializeField] GameObject teleporterLineSegmentPrefab;
+    [SerializeField] TeleportMarker teleportMarkerPrefab; //shows where we would land, and where our head would end up
+    TeleportMarker teleportMarker;
     bool snapRotatePossible = true;
     public InputAction gripAction; //make sure you enable these and disable them (see below)
     [SerializeField] InputAction driveAction = new InputAction(expectedControlType:"Vector2"); //this action is going to cause us to drive forward/backward and left/right
@@ -55,6 +57,8 @@ public class Hand : MonoBehaviour
             teleportSegments[i] = Instantiate<GameObject>(teleporterLineSegmentPrefab);
             teleportSegments[i].SetActive(false);
         }
+        teleportMarker = Instantiate(teleportMarkerPrefab);
+        teleportMarker.Hide();
     }
 
     void OnEnable()
@@ -79,7 +83,6 @@ public class Hand : MonoBehaviour
         Vector2 teleportControl = teleportAction.ReadValue<Vector2>();
 
         Vector2 driveControl = driveAction.ReadValue<Vector2>();
-        Debug.Log(driveControl);
         bool gripPressed = gripAction.IsPressed(); //save for later
 
         if (Held == null)
@@ -128,20 +131,16 @@ public class Hand : MonoBehaviour
         }else if(teleporterState == TeleporterState.ACTIVE && teleportControl.y < .85f)
         {
             //deactivate the telporter line AND do a teleport if the location is valid
-
-            //find the point below our head and move our rig to have the offset between this point and our target point
-
-            Vector3 headInRig = rig.transform.InverseTransformPoint(head.transform.position);
-            Vector3 footInRig = new Vector3(headInRig.x,0,headInRig.z);
-            Vector3 footInWorld = rig.transform.TransformPoint(footInRig);
-
-            Vector3 offset = teleportPoint - footInWorld;
-            rig.Translate(offset,Space.World);
+            if(teleportPossible) //the arc found somewhere flat to land; otherwise teleportPoint is stale
+            {
+                rig.Translate(TeleportOffset(),Space.World);
+            }
 
             for(int i = 0; i < 50; i++)
             {
                 teleportSegments[i].SetActive(false);
             }
+            teleportMarker.Hide();
             teleporterState = TeleporterState.INACTIVE;
         }
 
@@ -194,7 +193,14 @@ public class Hand : MonoBehaviour
                 
             }
 
-
+            if(teleportPossible) //show where we would land, and where our head (and view) would end up
+            {
+                teleportMarker.Show(teleportPoint, head.position + TeleportOffset(), head.rotation);
+            }
+            else
+            {
+                teleportMarker.Hide();
+            }
         }
 
         if(snapRotatePossible && Mathf.Abs(teleportControl.x) > .9f)
@@ -212,6 +218,16 @@ public class Hand : MonoBehaviour
 
 
         gripWasPressed = gripPressed; //makes the event not fire again next frame
+    }
+
+    //how far the rig has to move so the point on the floor below our head lands on the teleport point
+    Vector3 TeleportOffset()
+    {
+        Vector3 headInRig = rig.transform.InverseTransformPoint(head.transform.position);
+        Vector3 footInRig = new Vector3(headInRig.x,0,headInRig.z);
+        Vector3 footInWorld = rig.transform.TransformPoint(footInRig);
+
+        return teleportPoint - footInWorld;
     }
 
     void FixedUpdate()
