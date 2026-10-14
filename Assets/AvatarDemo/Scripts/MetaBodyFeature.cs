@@ -41,6 +41,12 @@ public class MetaBodyFeature : OpenXRFeature
     public bool BodyTrackingOn => tracker != 0;
     public bool SimultaneousOn { get; private set; }
     public string Status { get; private set; } = "not started";
+    // diagnostics, shown on the demo's panel
+    public int LastResult { get; private set; } = -999;
+    public bool LastActive { get; private set; }
+    public float LastConfidence { get; private set; }
+    public int LastValid { get; private set; }
+    int calls;
 
     ulong instance, session, tracker;
     IntPtr locations, jointBuf;
@@ -153,9 +159,11 @@ public class MetaBodyFeature : OpenXRFeature
         var info = new BodyJointsLocateInfo { type = XR_TYPE_BODY_JOINTS_LOCATE_INFO_FB, baseSpace = GetCurrentAppSpace(), time = now };
         var loc = new BodyJointLocations { type = XR_TYPE_BODY_JOINT_LOCATIONS_FB, jointCount = JointCount, jointLocations = jointBuf };
         Marshal.StructureToPtr(loc, locations, false);
-        if (locate(tracker, ref info, locations) != 0) return false;
+        LastResult = locate(tracker, ref info, locations);
+        if (LastResult != 0) { Diag(); return false; }
         loc = Marshal.PtrToStructure<BodyJointLocations>(locations);
-        if (loc.isActive == 0) return false;
+        LastActive = loc.isActive != 0; LastConfidence = loc.confidence;
+        int nValid = 0;
         for (int i = 0; i < JointCount; i++)
         {
             IntPtr p = jointBuf + i * JointLocationSize;
@@ -165,7 +173,17 @@ public class MetaBodyFeature : OpenXRFeature
             rot[i] = new Quaternion(-F(0), -F(1), F(2), F(3));
             pos[i] = new Vector3(F(4), F(5), -F(6));
             valid[i] = (flags & 0x3) == 0x3;             // orientation and position valid
+            if (valid[i]) nValid++;
         }
+        LastValid = nValid;
+        Diag();
+        if (!LastActive) return false;
         return true;
+    }
+
+    void Diag()
+    {
+        if (calls++ % 144 == 0)
+            Debug.Log($"[AvatarDemo] body locate: result {LastResult}, active {LastActive}, confidence {LastConfidence:F2}, valid joints {LastValid}/{JointCount}");
     }
 }

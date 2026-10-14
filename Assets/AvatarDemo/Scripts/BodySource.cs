@@ -23,7 +23,8 @@ public class BodySource : MonoBehaviour
             var f = MetaBodyFeature.Instance;
             if (!Requested) return "off";
             if (f == null) return "unavailable";
-            return Tracked ? "tracking" : f.Status;
+            if (!f.BodyTrackingOn) return f.Status;
+            return (Tracked ? "tracking" : "no body") + $" (result {f.LastResult}, active {(f.LastActive ? 1 : 0)}, conf {f.LastConfidence:F2}, joints {f.LastValid}/70)";
         }
     }
 

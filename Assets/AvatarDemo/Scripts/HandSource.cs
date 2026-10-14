@@ -20,8 +20,13 @@ public class HandSource : MonoBehaviour
     public Vector3 wristOffset = new Vector3(0f, -0.02f, -0.08f);
     [Tooltip("Extra rotation of the avatar hand relative to the controller's aim pose (degrees), per hand")]
     public Vector3 leftHandEuler = new Vector3(0f, 0f, 0f), rightHandEuler = new Vector3(0f, 0f, 0f);
-    [Tooltip("With hands and controllers both tracked, a hand this close to its controller is holding it")]
-    public float holdingDistance = 0.15f;
+    [Tooltip("With hands and controllers both tracked, a hand this close to a controller that is moving is holding it")]
+    public float holdingDistance = 0.2f;
+    [Tooltip("A controller that hasn't moved for this long is lying somewhere, not in a hand (s)")]
+    public float stillTime = 0.75f;
+    readonly Vector3[] lastCtrlPos = new Vector3[2];
+    readonly float[] lastMoved = new float[2];
+    readonly bool[] lastWasController = new bool[2];
 
     // the controller's aim (pointer) pose: its forward is where the controller points, which is close to
     // the direction of the knuckles; the grip pose's axes run along the handle instead
@@ -82,7 +87,17 @@ public class HandSource : MonoBehaviour
             h.hasJoints = true;
         }
         // Both tracked (simultaneous hands and controllers): a hand right at its controller is holding it.
-        if (hand && ctrl && Vector3.Distance(h.joints[XRHandJointID.Wrist.ToIndex()], ControllerWrist(controller, i)) < holdingDistance) hand = false;
+        // A controller counts as held only while it moves; a controller set down stops moving.
+        if (ctrl)
+        {
+            // local position: moving the rig (locomotion) must not count as the controller moving
+            if ((controller.localPosition - lastCtrlPos[i]).sqrMagnitude > 0.003f * 0.003f) lastMoved[i] = Time.time;
+            lastCtrlPos[i] = controller.localPosition;
+        }
+        bool held = ctrl && Time.time - lastMoved[i] < stillTime;
+        // Both tracked (simultaneous hands and controllers): use the hand unless it is holding a moving controller.
+        if (hand && held && Vector3.Distance(h.joints[XRHandJointID.Wrist.ToIndex()], ControllerWrist(controller, i)) < holdingDistance) hand = false;
+
         if (hand)
         {
             // Directions from the joints themselves, so no axis convention is assumed:
@@ -94,11 +109,15 @@ public class HandSource : MonoBehaviour
             h.palm = Vector3.Cross(h.fingers, across).normalized * (h.isLeft ? -1f : 1f);
             h.fromHandTracking = true;
             h.tracked = true;
+            lastWasController[i] = false;
             return;
         }
         h.hasJoints = false;
-        if (ctrl)
+        // Controller: when it is moving, when hand tracking is off, or when it was already the source
+        // (a controller held still in a hand is not hand-tracked, and must not drop out)
+        if (ctrl && (held || mode == Mode.ControllersOnly || lastWasController[i]))
         {
+            lastWasController[i] = true;
             Quaternion aim = AimRotation(controller, i) * Quaternion.Euler(h.isLeft ? leftHandEuler : rightHandEuler);
             h.wrist = ControllerWrist(controller, i);
             h.fingers = aim * Vector3.forward;

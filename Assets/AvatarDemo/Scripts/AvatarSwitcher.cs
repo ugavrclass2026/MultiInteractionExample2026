@@ -16,7 +16,6 @@ public class AvatarSwitcher : MonoBehaviour
     public int current;
     public HandSource hands;
     public BodySource body;
-    public HalfBodyAvatar robot;     // the avatar whose arms can be fitted to the user
     public JointDots joints;
     public GameObject mirror;
     public Hand[] controllerHands;     // the grab system's hands: hidden when an avatar has its own hands
@@ -46,22 +45,22 @@ public class AvatarSwitcher : MonoBehaviour
 
     public void ToggleBody() { if (body) body.Toggle(); UpdateStatus(); }
 
-    public void ToggleFitArms() { if (robot) robot.SetFitArms(!robot.fitArms); UpdateStatus(); }
+    HalfBodyAvatar Current => avatars[current].root.GetComponent<HalfBodyAvatar>();
 
-    public void Calibrate()
+    public void HeightUp() { foreach (var hb in All()) hb.ScaleBy(1.04f); UpdateStatus(); }
+    public void HeightDown() { foreach (var hb in All()) hb.ScaleBy(1f / 1.04f); UpdateStatus(); }
+    public void ArmsUp() { if (Current) Current.ArmsBy(0.05f); UpdateStatus(); }
+    public void ArmsDown() { if (Current) Current.ArmsBy(-0.05f); UpdateStatus(); }
+
+    System.Collections.Generic.IEnumerable<HalfBodyAvatar> All()
     {
-        float eye = hmd.position.y - (floor ? floor.position.y : 0f);
-        foreach (var a in avatars)
-            foreach (var hb in a.root.GetComponentsInChildren<HalfBodyAvatar>(true)) hb.Calibrate(eye);
-        Debug.Log($"[AvatarDemo] calibrated to eye height {eye:F2} m");
-        Apply();
+        foreach (var a in avatars) foreach (var hb in a.root.GetComponentsInChildren<HalfBodyAvatar>(true)) yield return hb;
     }
 
     void Apply()
     {
         for (int i = 0; i < avatars.Length; i++) avatars[i].root.SetActive(i == current);
         var e = avatars[current];
-        foreach (var h in controllerHands) if (h && h.graphics) h.graphics.SetActive(e.showControllerHands);
         if (joints) joints.show = e.showJoints;
         UpdateStatus();
     }
@@ -71,11 +70,12 @@ public class AvatarSwitcher : MonoBehaviour
         if (!status) return;
         string Src(HandSource.Hand h) => h.fromHandTracking ? "hand" : h.fromController ? "controller" : "-";
         var mb = MetaBodyFeature.Instance;
+        var cur = Current;
         status.text = $"Avatar: {avatars[current].label}\n" +
                       $"Hands: {HandSource.ModeLabel(hands.mode)} - L {Src(hands.left)}, R {Src(hands.right)}" +
-                      (mb != null ? (mb.SimultaneousOn ? " (simultaneous)" : "") : "") + "\n" +
-                      $"Body tracking: {(body ? body.Status : "-")}   Mirror: {(mirror.activeSelf ? "on" : "off")}\n" +
-                      (robot ? $"Robot arms: {(robot.fitArms ? "fit to you" : "fixed")} x{robot.ArmScale:F2}" : "");
+                      (mb != null && mb.SimultaneousOn ? " (simultaneous)" : "") + "\n" +
+                      $"Body tracking: {(body ? body.Status : "-")}\n" +
+                      (cur ? $"Height x{cur.transform.localScale.x:F2}   Arms x{cur.ArmScale:F2}   " : "") + $"Mirror: {(mirror.activeSelf ? "on" : "off")}";
     }
 
     void Update()
@@ -86,12 +86,20 @@ public class AvatarSwitcher : MonoBehaviour
             if (kb.nKey.wasPressedThisFrame) NextAvatar();
             if (kb.hKey.wasPressedThisFrame) ToggleHands();
             if (kb.mKey.wasPressedThisFrame) ToggleMirror();
-            if (kb.cKey.wasPressedThisFrame) Calibrate();
             if (kb.bKey.wasPressedThisFrame) ToggleBody();
-            if (kb.aKey.wasPressedThisFrame) ToggleFitArms();
+            if (kb.upArrowKey.wasPressedThisFrame) HeightUp();
+            if (kb.downArrowKey.wasPressedThisFrame) HeightDown();
+            if (kb.rightArrowKey.wasPressedThisFrame) ArmsUp();
+            if (kb.leftArrowKey.wasPressedThisFrame) ArmsDown();
         }
         if (demo && Time.time > demoNext) { demoNext = Time.time + 6f; NextAvatar(); }
         if (Time.frameCount % 15 == 0) UpdateStatus();
+    }
+
+    void LateUpdate()
+    {
+        bool show = avatars[current].showControllerHands;
+        foreach (var h in controllerHands) if (h && h.graphics && h.graphics.activeSelf != show) h.graphics.SetActive(show);
     }
 
     // Demo: both hands trace slow loops in front of the chest.

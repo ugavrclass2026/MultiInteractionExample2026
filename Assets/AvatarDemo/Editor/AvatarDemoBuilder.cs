@@ -76,7 +76,7 @@ public static class AvatarDemoBuilder
             new AvatarSwitcher.Entry { label = "Robot, half body (IK arms)", root = robot, showJoints = true },
             new AvatarSwitcher.Entry { label = "Human, half body (IK arms, tracked fingers)", root = human, showJoints = false },
         };
-        sw.hands = hs; sw.body = bs; sw.robot = robot.GetComponent<HalfBodyAvatar>(); sw.joints = jd; sw.mirror = mirror; sw.controllerHands = new[] { handL, handR };
+        sw.hands = hs; sw.body = bs; sw.joints = jd; sw.mirror = mirror; sw.controllerHands = new[] { handL, handR };
         sw.hmd = cam.transform; sw.floor = floor ? floor.transform : null;
 
         BuildPanel(demo, sw, accent, orange);
@@ -260,21 +260,22 @@ public static class AvatarDemoBuilder
             go.GetComponent<MeshRenderer>().sharedMaterial = textMat;
             return t;
         }
-        var back = Prim(PrimitiveType.Cube, panel, new Vector3(0, 0.1f, 0.02f), new Vector3(0.42f, 0.5f, 0.02f), frame);
+        var back = Prim(PrimitiveType.Cube, panel, new Vector3(0, 0.1f, 0.02f), new Vector3(0.52f, 0.5f, 0.02f), frame);
         Object.DestroyImmediate(back.GetComponent<Collider>());
         var items = new (string, UnityEngine.Events.UnityAction)[]
-        { ("Next avatar", sw.NextAvatar), ("Hands / controllers", sw.ToggleHands), ("Mirror", sw.ToggleMirror),
-          ("Calibrate height", sw.Calibrate), ("Body tracking", sw.ToggleBody), ("Robot arms fit", sw.ToggleFitArms) };
+        { ("Next avatar", sw.NextAvatar), ("Hands / controllers", sw.ToggleHands), ("Body tracking", sw.ToggleBody), ("Mirror", sw.ToggleMirror),
+          ("Height -", sw.HeightDown), ("Height +", sw.HeightUp), ("Arms -", sw.ArmsDown), ("Arms +", sw.ArmsUp) };
         for (int i = 0; i < items.Length; i++)
         {
-            float x = -0.12f + (i % 3) * 0.12f, y = i < 3 ? 0.07f : -0.08f;
+            float x = -0.18f + (i % 4) * 0.12f, y = i < 4 ? 0.07f : -0.08f;
             var b = new GameObject("Button: " + items[i].Item1).transform; b.SetParent(panel, false); b.localPosition = new Vector3(x, y, 0f);
             var col = b.gameObject.AddComponent<BoxCollider>(); col.isTrigger = true; col.size = new Vector3(0.08f, 0.08f, 0.06f); col.center = new Vector3(0, 0, -0.02f);
             var capT = Prim(PrimitiveType.Cube, b, Vector3.zero, new Vector3(0.07f, 0.07f, 0.025f), cap).transform;
             Object.DestroyImmediate(capT.GetComponent<Collider>());
             var pb = b.gameObject.AddComponent<PokeButton>(); pb.cap = capT;
             UnityEventTools.AddPersistentListener(pb.onPress, items[i].Item2);
-            Text(b, new Vector3(0, -0.06f, -0.015f), items[i].Item1.Replace(" / ", "/\n").Replace(" ", "\n"), 0.004f);
+            string label = items[i].Item1.Contains("/") || items[i].Item1.StartsWith("Next") || items[i].Item1.StartsWith("Body") ? items[i].Item1.Replace(" / ", "/\n").Replace(" ", "\n") : items[i].Item1;
+            Text(b, new Vector3(0, -0.06f, -0.015f), label, 0.004f);
         }
         sw.status = Text(panel, new Vector3(0, 0.27f, -0.015f), "", 0.0038f);
     }

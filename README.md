@@ -77,10 +77,12 @@ Half-body avatars, a stereo mirror, and hand tracking on Quest 3. The scene is g
 - **Pinch:** grab and throw near an object; pinch in the air to pull yourself
 - **Torso:** turns with the head and hands; chest twists toward the head
 - **Body tracking (optional):** Meta inside-out body tracking (`XR_FB_body_tracking`, high fidelity); tracked shoulders turn the torso, tracked elbows are the IK poles. Pauses simultaneous hands/controllers while on.
-- **Robot arms fit:** arm bones stretch to the user's longest reach
+- **Height and arm length:** buttons scale the avatar and lengthen or shorten the arms
 - **Mirror:** one camera per eye at the eye's reflection, off-axis frustum through the mirror (`StereoMirror`)
 - **First person:** full avatar on layer `MirrorOnly`, headless copy on `FirstPersonOnly` (`FirstPersonHead`)
-- **Buttons** (poke with a fingertip or controller): next avatar, hands/controllers, mirror, calibrate height, body tracking, robot arms fit
+- **Buttons** (poke with a fingertip or controller): next avatar, hands/controllers, body tracking, mirror, height −/+, arms −/+
+- **Hand source:** hand tracking unless that hand holds a moving controller; a controller left still is ignored once the hand is tracked
+- **Panel status:** each hand's source, simultaneous mode, body-tracking diagnostics (OpenXR result, active, confidence, valid joints)
 
 Scripts: `HalfBodyAvatar` (per-frame loop), `TwoBoneIK`, `HandSource`, `BodySource`, `MetaBodyFeature` (OpenXR feature calling
 Meta's extensions directly), `PinchGrabber`, `StereoMirror`, `FirstPersonHead`, `LimbVisual`, `AbstractAvatar`, `JointDots`,

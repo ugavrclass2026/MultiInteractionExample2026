@@ -42,10 +42,7 @@ public class HalfBodyAvatar : MonoBehaviour
     public float maxTwist = 50f;
     [Range(0f, 1f)] public float handsWeight = 0.6f;         // how much the hands pull the body's facing
 
-    [Header("Arm length (robot)")]
-    public bool fitArms;                                      // stretch the arms to fit the user's reach
     public float ArmScale { get; private set; } = 1f;
-    float maxReach;                                           // longest shoulder-to-wrist distance seen
 
     Transform[] driven;
     Quaternion[] bindLocal;
@@ -95,14 +92,11 @@ public class HalfBodyAvatar : MonoBehaviour
         return Quaternion.LookRotation(f, p);
     }
 
-    public void Calibrate(float userEyeHeight)
-    {
-        if (avatarEyeHeight > 0.3f) transform.localScale = Vector3.one * (userEyeHeight / avatarEyeHeight);
-        maxReach = 0f;                       // re-learn the reach at the new size
-        SetArmScale(1f);
-    }
+    /// <summary>Make the whole avatar taller or shorter (the head stays pinned to the headset).</summary>
+    public void ScaleBy(float factor) => transform.localScale = Vector3.one * Mathf.Clamp(transform.localScale.x * factor, 0.6f, 1.6f);
 
-    public void SetFitArms(bool on) { fitArms = on; maxReach = 0f; if (!on) SetArmScale(1f); }
+    /// <summary>Lengthen or shorten both arms (upper arm and forearm together).</summary>
+    public void ArmsBy(float delta) => SetArmScale(Mathf.Clamp(ArmScale + delta, 0.6f, 1.6f));
 
     void SetArmScale(float s)
     {
@@ -171,24 +165,9 @@ public class HalfBodyAvatar : MonoBehaviour
         // 6-7. arms
         if (hands != null)
         {
-            if (fitArms) FitArms();
             Arm(hands.left, leftUpper, leftLower, leftHand, lHandBind, leftFingers, -1f, MetaBodyFeature.LeftArmLower);
             Arm(hands.right, rightUpper, rightLower, rightHand, rHandBind, rightFingers, 1f, MetaBodyFeature.RightArmLower);
         }
-    }
-
-    // The robot's arms grow (or shrink) to the longest reach seen, so a straight arm in the avatar is a straight arm for you.
-    void FitArms()
-    {
-        foreach (var (h, sh) in new[] { (hands.left, leftUpper), (hands.right, rightUpper) })
-            if (h.tracked && sh)
-            {
-                float d = Vector3.Distance(sh.position, h.wrist);
-                if (d < 1.0f * transform.localScale.x) maxReach = Mathf.Max(maxReach, d);   // ignore a controller left across the room
-            }
-        if (bindArmLength <= 0f || maxReach <= 0f) return;
-        float target = Mathf.Clamp(maxReach / (bindArmLength * transform.localScale.x), 0.6f, 1.6f);
-        SetArmScale(Mathf.MoveTowards(ArmScale, target, Time.deltaTime * 0.5f));
     }
 
     void Arm(HandSource.Hand h, Transform upper, Transform lower, Transform hand, Quaternion handBind, Transform[] fingers, float side, int trackedElbow)
