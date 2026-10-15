@@ -69,15 +69,14 @@ public static class AvatarDemoBuilder
         var human = BuildHuman(avatars, cam.transform, hs);
         foreach (var hb in avatars.GetComponentsInChildren<HalfBodyAvatar>(true)) hb.body = bs;
 
-        // lip sync: microphone -> visemes -> each avatar's mouth (a shape, or the human's jaw and mouth-corner bones)
-        var lip = new GameObject("Lip Sync").AddComponent<LipSync>(); lip.transform.SetParent(demo);
+        // Meta face tracking -> each avatar's face (shapes on the simple avatars, facial bones on the human)
+        var face = new GameObject("Face Source").AddComponent<FaceSource>(); face.transform.SetParent(demo);
         foreach (var av in new[] { abs, robot, human })
         {
-            var vm = av.AddComponent<VisemeMouth>(); vm.lipSync = lip;
-            vm.mouth = av.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "Mouth");
-            vm.jaw = av.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "Bip01 MJaw");
-            vm.leftCorner = av.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "Bip01 LMouthCorner");
-            vm.rightCorner = av.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "Bip01 RMouthCorner");
+            var af = av.AddComponent<AvatarFace>(); af.face = face;
+            Transform Named(string n) => av.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == n);
+            af.mouth = Named("Mouth"); af.visor = Named("Visor"); af.browL = Named("Brow L"); af.browR = Named("Brow R");
+            if (Named("Bip01 Head")) af.boneRoot = Named("Bip01 Head");
         }
 
         var sw = new GameObject("Avatar Switcher").AddComponent<AvatarSwitcher>();
@@ -88,7 +87,7 @@ public static class AvatarDemoBuilder
             new AvatarSwitcher.Entry { label = "Robot, half body (IK arms)", root = robot, showJoints = true },
             new AvatarSwitcher.Entry { label = "Human, half body (IK arms, tracked fingers)", root = human, showJoints = false },
         };
-        sw.hands = hs; sw.body = bs; sw.lipSync = lip; sw.joints = jd; sw.mirror = mirror; sw.controllerHands = new[] { handL, handR };
+        sw.hands = hs; sw.body = bs; sw.face = face; sw.joints = jd; sw.mirror = mirror; sw.controllerHands = new[] { handL, handR };
         sw.hmd = cam.transform; sw.floor = floor ? floor.transform : null;
 
         BuildPanel(demo, sw, accent, orange);
@@ -158,7 +157,8 @@ public static class AvatarDemoBuilder
         var head = new GameObject("Head").transform; head.SetParent(root);
         var ball = Prim(PrimitiveType.Sphere, head, Vector3.zero, new Vector3(0.19f, 0.22f, 0.21f), body);
         var visor = Prim(PrimitiveType.Cube, head, new Vector3(0f, 0.01f, 0.08f), new Vector3(0.17f, 0.06f, 0.06f), dark);
-        Prim(PrimitiveType.Cube, head, new Vector3(0f, -0.06f, 0.088f), new Vector3(0.05f, 0.006f, 0.02f), dark).name = "Mouth";
+        visor.name = "Visor";
+        FaceShapes(head, -0.06f, 0.088f, 0.06f, 0.085f, dark);
         SetLayer(head.gameObject, L("MirrorOnly"));
         var hl = new GameObject("Left Mitten").transform; hl.SetParent(root);
         Prim(PrimitiveType.Cube, hl, Vector3.zero, new Vector3(0.085f, 0.03f, 0.12f), body);
@@ -200,8 +200,8 @@ public static class AvatarDemoBuilder
         Prim(PrimitiveType.Cube, rh, new Vector3(0, 0, 0.06f), new Vector3(0.08f, 0.03f, 0.12f), joint);
         var hv = new GameObject("Head Visual").transform; hv.SetParent(head); hv.localPosition = new Vector3(0, 0.1f, 0.01f);
         Prim(PrimitiveType.Sphere, hv, Vector3.zero, new Vector3(0.2f, 0.23f, 0.22f), body);
-        Prim(PrimitiveType.Cube, hv, new Vector3(0, 0.01f, 0.085f), new Vector3(0.17f, 0.06f, 0.06f), dark);
-        Prim(PrimitiveType.Cube, hv, new Vector3(0, -0.065f, 0.093f), new Vector3(0.05f, 0.006f, 0.02f), dark).name = "Mouth";
+        Prim(PrimitiveType.Cube, hv, new Vector3(0, 0.01f, 0.085f), new Vector3(0.17f, 0.06f, 0.06f), dark).name = "Visor";
+        FaceShapes(hv, -0.065f, 0.093f, 0.065f, 0.09f, dark);
         SetLayer(hv.gameObject, L("MirrorOnly"));
 
         var a = root.gameObject.AddComponent<HalfBodyAvatar>();
@@ -330,6 +330,14 @@ public static class AvatarDemoBuilder
         if (m == null) { m = new Material(Shader.Find("Universal Render Pipeline/Lit")); AssetDatabase.CreateAsset(m, path); }
         m.SetColor("_BaseColor", c); m.SetFloat("_Smoothness", 0.35f);
         return m;
+    }
+
+    // a mouth bar and two brows on a simple head, facing +z (the visor stands in for the eyes)
+    static void FaceShapes(Transform head, float mouthY, float mouthZ, float browY, float browZ, Material m)
+    {
+        Prim(PrimitiveType.Cube, head, new Vector3(0f, mouthY, mouthZ), new Vector3(0.05f, 0.006f, 0.02f), m).name = "Mouth";
+        Prim(PrimitiveType.Cube, head, new Vector3(-0.045f, browY, browZ), new Vector3(0.05f, 0.008f, 0.02f), m).name = "Brow L";
+        Prim(PrimitiveType.Cube, head, new Vector3(0.045f, browY, browZ), new Vector3(0.05f, 0.008f, 0.02f), m).name = "Brow R";
     }
 
     static Transform ControllerModel(Transform parent, string side)

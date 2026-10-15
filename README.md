@@ -79,9 +79,11 @@ Half-body avatars, a stereo mirror, and hand tracking on Quest 3. The scene is g
   - hands or controllers (the headset switches between them)
   - hands or controllers + body tracking; a hand with neither follows the body tracker's hand joints
   - controllers only (hand tracking ignored)
-- **Lip sync:** microphone → 15 visemes with Meta's Oculus Lipsync library (`Plugins/Android/libOVRLipSync.so`, Oculus
-  Audio SDK License 3.3, called directly from `LipSync`; loudness stand-in in the editor) → `VisemeMouth` on every avatar:
-  a mouth shape (head + hands, robot), jaw and mouth-corner bones (Rocketbox), or `viseme_*` blendshapes (Avaturn/RPM)
+- **Face:** Meta face tracking called directly through OpenXR (`XR_FB_face_tracking2` + `XR_META_face_tracking_visemes`;
+  face cameras on Quest Pro, microphone on Quest 2/3/3S): 70 expression weights + 15 visemes (`FaceSource`) → `AvatarFace`
+  on every avatar: mouth bar, blinking visor and brows (head + hands, robot); jaw, lips, mouth corners, eyelids, brows,
+  cheeks via facial bones (Rocketbox); ARKit / `viseme_*` blendshapes (Avaturn, RPM). Audio-only weights are small, so
+  there is a dead zone and gain, and the mouth opening comes from the visemes
 - **Controller models:** Quest Touch Plus (WebXR input profiles, MIT) in the hand or where it was put down
 - **Pinch:** grab and throw near an object; pinch in the air to pull yourself
 - **Torso:** turns with the head and hands; chest twists toward the head
@@ -95,5 +97,5 @@ Half-body avatars, a stereo mirror, and hand tracking on Quest 3. The scene is g
 
 Scripts: `HalfBodyAvatar` (per-frame loop), `TwoBoneIK`, `HandSource`, `BodySource`, `MetaBodyFeature` (OpenXR feature calling
 Meta's extensions directly), `PinchGrabber`, `StereoMirror`, `FirstPersonHead`, `LimbVisual`, `AbstractAvatar`, `JointDots`,
-`PokeButton`, `AvatarSwitcher`, `DetachedControllersFeature`, `ControllerModels`, `LipSync`, `VisemeMouth`. Project changes: `com.unity.xr.hands`, OpenXR Hand Tracking + Meta Hand Tracking Aim +
+`PokeButton`, `AvatarSwitcher`, `DetachedControllersFeature`, `ControllerModels`, `FaceSource`, `AvatarFace`. Project changes: `com.unity.xr.hands`, OpenXR Hand Tracking + Meta Hand Tracking Aim +
 the two AvatarDemo features (Android), layers `MirrorSurface`, `MirrorOnly`, `FirstPersonOnly`.
