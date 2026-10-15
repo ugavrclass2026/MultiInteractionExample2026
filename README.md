@@ -79,6 +79,9 @@ Half-body avatars, a stereo mirror, and hand tracking on Quest 3. The scene is g
   - hands or controllers (the headset switches between them)
   - hands or controllers + body tracking; a hand with neither follows the body tracker's hand joints
   - controllers only (hand tracking ignored)
+- **Lip sync:** microphone → 15 visemes with Meta's Oculus Lipsync library (`Plugins/Android/libOVRLipSync.so`, Oculus
+  Audio SDK License 3.3, called directly from `LipSync`; loudness stand-in in the editor) → `VisemeMouth` on every avatar:
+  a mouth shape (head + hands, robot), jaw and mouth-corner bones (Rocketbox), or `viseme_*` blendshapes (Avaturn/RPM)
 - **Controller models:** Quest Touch Plus (WebXR input profiles, MIT) in the hand or where it was put down
 - **Pinch:** grab and throw near an object; pinch in the air to pull yourself
 - **Torso:** turns with the head and hands; chest twists toward the head
@@ -92,5 +95,5 @@ Half-body avatars, a stereo mirror, and hand tracking on Quest 3. The scene is g
 
 Scripts: `HalfBodyAvatar` (per-frame loop), `TwoBoneIK`, `HandSource`, `BodySource`, `MetaBodyFeature` (OpenXR feature calling
 Meta's extensions directly), `PinchGrabber`, `StereoMirror`, `FirstPersonHead`, `LimbVisual`, `AbstractAvatar`, `JointDots`,
-`PokeButton`, `AvatarSwitcher`, `DetachedControllersFeature`, `ControllerModels`. Project changes: `com.unity.xr.hands`, OpenXR Hand Tracking + Meta Hand Tracking Aim +
+`PokeButton`, `AvatarSwitcher`, `DetachedControllersFeature`, `ControllerModels`, `LipSync`, `VisemeMouth`. Project changes: `com.unity.xr.hands`, OpenXR Hand Tracking + Meta Hand Tracking Aim +
 the two AvatarDemo features (Android), layers `MirrorSurface`, `MirrorOnly`, `FirstPersonOnly`.

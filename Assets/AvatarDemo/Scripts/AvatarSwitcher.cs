@@ -17,6 +17,7 @@ public class AvatarSwitcher : MonoBehaviour
     public int current;
     public HandSource hands;
     public BodySource body;
+    public LipSync lipSync;
     public JointDots joints;
     public GameObject mirror;
     public Hand[] controllerHands;     // the grab system's hands: hidden when an avatar has its own hands
@@ -93,6 +94,7 @@ public class AvatarSwitcher : MonoBehaviour
                       $"Tracking: {Label(mode)}\n" +
                       $"L {Src(hands.left)}, R {Src(hands.right)}" +
                       (mode == TrackingMode.HandsOrControllersBody && body ? $"   body: {body.Status}" : "") + "\n" +
+                      (lipSync ? $"Lip sync: {lipSync.Status}\n" : "") +
                       (cur ? $"Height x{cur.transform.localScale.x:F2}   Arms x{cur.ArmScale:F2}   " : "") + $"Mirror: {(mirror.activeSelf ? "on" : "off")}";
     }
 
