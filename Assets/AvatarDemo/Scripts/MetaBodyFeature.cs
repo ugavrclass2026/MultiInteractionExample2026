@@ -12,6 +12,10 @@ using UnityEditor;
 ///   - XR_FB_body_tracking (+ XR_META_body_tracking_fidelity): 70 upper-body and hand joints from the headset.
 ///     Fidelity High is inside-out body tracking on Quest 3 (the cameras see elbows and torso).
 ///   - XR_META_simultaneous_hands_and_controllers: hand tracking and controllers at the same time.
+///   - XR_META_hand_tracking_frequency_hint: Fast Motion Mode (60 Hz hand tracking), switchable at runtime.
+///   - XR_META_hand_tracking_wide_motion_mode2 (+ XR_EXT_hand_tracking_data_source): Wide Motion Mode, hands estimated
+///     from body tracking when out of the cameras' view. Requested when a hand tracker is created, so this feature wraps
+///     xrCreateHandTrackerEXT (HookGetInstanceProcAddr) and restarts XR Hands to apply it.
 ///   - XR_FB_face_tracking2 (+ XR_META_face_tracking_visemes): 70 face expression weights and 15 visemes, from the
 ///     face cameras (Quest Pro) or, on headsets without them (Quest 2, 3, 3S), from the microphone.
 /// The two don't run together (Quest 3, 2026-10-14): with simultaneous mode on, xrCreateBodyTrackerFB fails
@@ -32,7 +36,7 @@ using UnityEditor;
 #endif
 public class MetaBodyFeature : OpenXRFeature
 {
-    const string Extensions = "XR_FB_body_tracking XR_META_body_tracking_fidelity XR_META_simultaneous_hands_and_controllers XR_KHR_convert_timespec_time XR_FB_face_tracking2 XR_META_face_tracking_visemes";
+    const string Extensions = "XR_FB_body_tracking XR_META_body_tracking_fidelity XR_META_simultaneous_hands_and_controllers XR_KHR_convert_timespec_time XR_FB_face_tracking2 XR_META_face_tracking_visemes XR_META_hand_tracking_frequency_hint XR_EXT_hand_tracking_data_source XR_META_hand_tracking_wide_motion_mode2";
     public const int JointCount = 70;
 
     // ---- joint indices we use (XrBodyJointFB) ----
@@ -80,6 +84,12 @@ public class MetaBodyFeature : OpenXRFeature
     public string FaceStatus { get; private set; } = "off";
     public int FaceDataSource { get; private set; } = -1;      // 0 = cameras, 1 = audio
     int faceCalls;
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int SetFrequencyHint(ulong session, int hint);
+    SetFrequencyHint frequencyHint;
+    public bool FastMotionOn { get; private set; }
+    public static int HandTrackersCreated { get; private set; }
+    public static int LastHandTrackerResult { get; private set; } = -999;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int StringToPath(ulong instance, [MarshalAs(UnmanagedType.LPStr)] string s, out ulong path);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int PathToString(ulong instance, ulong path, uint capacity, out uint count, IntPtr buffer);
@@ -129,6 +139,7 @@ public class MetaBodyFeature : OpenXRFeature
         createFace = Get<CreateFaceTracker>("xrCreateFaceTracker2FB");
         destroyFace = Get<DestroyFaceTracker>("xrDestroyFaceTracker2FB");
         getFace = Get<GetFaceWeights>("xrGetFaceExpressionWeights2FB");
+        frequencyHint = Get<SetFrequencyHint>("xrSetHandTrackingFrequencyHintMETA");
         toPath = Get<StringToPath>("xrStringToPath");
         toString = Get<PathToString>("xrPathToString");
         currentProfile = Get<GetCurrentProfile>("xrGetCurrentInteractionProfile");
@@ -156,6 +167,145 @@ public class MetaBodyFeature : OpenXRFeature
         Debug.Log($"[AvatarDemo] simultaneous hands and controllers {(on ? "resume" : "pause")}: result {r}");
         return r == 0;
     }
+
+    /// <summary>Fast Motion Mode: 60 Hz hand tracking. Meta: not with simultaneous hands and controllers.</summary>
+    public bool SetFastMotion(bool on)
+    {
+        if (frequencyHint == null || session == 0) return false;
+        int r = frequencyHint(session, on ? 2 : 1);    // XR_HAND_TRACKING_FREQUENCY_HINT_HIGH_META / DEFAULT_META
+        Debug.Log($"[AvatarDemo] fast motion mode {(on ? "on" : "off")}: result {r}");
+        if (r == 0) FastMotionOn = on;
+        return r == 0;
+    }
+    public bool FastMotionSupported => frequencyHint != null;
+
+    /// <summary>Wide Motion Mode. Unity's XR Hands creates its hand trackers once, so this feature creates its own
+    /// pair asking for the wide-motion data source and, while the mode is on, answers XR Hands' joint queries
+    /// (xrLocateHandJointsEXT) from them. Meta: not with simultaneous hands and controllers.</summary>
+    public void SetWideMotion(bool on)
+    {
+        if (on)
+        {
+            for (int hand = 1; hand <= 2; hand++)          // XR_HAND_LEFT_EXT, XR_HAND_RIGHT_EXT
+            {
+                if (wideTracker[hand] != 0 || nextCreateHandTracker == null || handSession == 0) continue;
+                var info = new HandTrackerCreateInfo { type = 1000051001, hand = hand, jointSet = 0 };   // XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT
+                IntPtr sources = Marshal.AllocHGlobal(8), ds = Marshal.AllocHGlobal(Marshal.SizeOf<HandTrackingDataSourceInfo>()),
+                       ci = Marshal.AllocHGlobal(Marshal.SizeOf<HandTrackerCreateInfo>());
+                Marshal.WriteInt32(sources, 0, 1);              // XR_HAND_TRACKING_DATA_SOURCE_UNOBSTRUCTED_EXT
+                Marshal.WriteInt32(sources, 4, 1000695000);     // XR_HAND_TRACKING_DATA_SOURCE_UNOBSTRUCTED_WIDE_MOTION_META
+                Marshal.StructureToPtr(new HandTrackingDataSourceInfo { type = 1000428000, next = IntPtr.Zero, count = 2, sources = sources }, ds, false);
+                info.next = ds;
+                Marshal.StructureToPtr(info, ci, false);
+                int r = nextCreateHandTracker(handSession, ci, out wideTracker[hand]);
+                Marshal.FreeHGlobal(ci); Marshal.FreeHGlobal(ds); Marshal.FreeHGlobal(sources);
+                if (r != 0) wideTracker[hand] = 0;
+                Debug.Log($"[AvatarDemo] wide motion tracker {(hand == 1 ? "L" : "R")}: result {r}");
+            }
+            WideMotionOn = wideTracker[1] != 0 && wideTracker[2] != 0;
+        }
+        else
+        {
+            WideMotionOn = false;
+            for (int hand = 1; hand <= 2; hand++)
+            {
+                if (wideTracker[hand] != 0 && nextDestroyHandTracker != null) nextDestroyHandTracker(wideTracker[hand]);
+                wideTracker[hand] = 0;
+            }
+            Debug.Log("[AvatarDemo] wide motion mode off");
+        }
+    }
+    public static bool WideMotionOn { get; private set; }
+    /// <summary>The data source of the last joint query per hand (1 = cameras, 1000695000 = wide motion), and whether it was active.</summary>
+    public static readonly int[] LastDataSource = new int[3];
+    public static readonly bool[] LastSourceActive = new bool[3];
+
+    // ---- wrapping XR Hands' hand-tracker calls ----
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int GetProcAddrRaw(ulong instance, IntPtr name, out IntPtr fn);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int CreateHandTracker(ulong session, IntPtr createInfo, out ulong tracker);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int DestroyHandTracker(ulong tracker);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int LocateHandJoints(ulong tracker, IntPtr locateInfo, IntPtr locations);
+    [StructLayout(LayoutKind.Sequential)] struct HandTrackerCreateInfo { public int type; public IntPtr next; public int hand; public int jointSet; }
+    [StructLayout(LayoutKind.Sequential)] struct HandTrackingDataSourceInfo { public int type; public IntPtr next; public uint count; public IntPtr sources; }
+    static GetProcAddrRaw nextGetProcAddr;
+    static CreateHandTracker nextCreateHandTracker;
+    static DestroyHandTracker nextDestroyHandTracker;
+    static LocateHandJoints nextLocateHandJoints;
+    static readonly GetProcAddrRaw hookedGetProcAddr = HookedGetProcAddr;
+    static readonly CreateHandTracker hookedCreateHandTracker = HookedCreateHandTracker;
+    static readonly DestroyHandTracker hookedDestroyHandTracker = HookedDestroyHandTracker;
+    static readonly LocateHandJoints hookedLocateHandJoints = HookedLocateHandJoints;
+    static readonly System.Collections.Generic.Dictionary<ulong, int> handOf = new System.Collections.Generic.Dictionary<ulong, int>();
+    static readonly ulong[] wideTracker = new ulong[3];
+    static ulong handSession;
+    static IntPtr sourceState;          // XrHandTrackingDataSourceStateEXT, chained into joint queries to see which source answered
+    static int locateCalls;
+
+    protected override IntPtr HookGetInstanceProcAddr(IntPtr func)
+    {
+        nextGetProcAddr = Marshal.GetDelegateForFunctionPointer<GetProcAddrRaw>(func);
+        return Marshal.GetFunctionPointerForDelegate(hookedGetProcAddr);
+    }
+
+    [AOT.MonoPInvokeCallback(typeof(GetProcAddrRaw))]
+    static int HookedGetProcAddr(ulong instance, IntPtr name, out IntPtr fn)
+    {
+        int r = nextGetProcAddr(instance, name, out fn);
+        if (r != 0 || fn == IntPtr.Zero) return r;
+        switch (Marshal.PtrToStringAnsi(name))
+        {
+            case "xrCreateHandTrackerEXT":
+                nextCreateHandTracker = Marshal.GetDelegateForFunctionPointer<CreateHandTracker>(fn);
+                fn = Marshal.GetFunctionPointerForDelegate(hookedCreateHandTracker); break;
+            case "xrDestroyHandTrackerEXT":
+                nextDestroyHandTracker = Marshal.GetDelegateForFunctionPointer<DestroyHandTracker>(fn);
+                fn = Marshal.GetFunctionPointerForDelegate(hookedDestroyHandTracker); break;
+            case "xrLocateHandJointsEXT":
+                nextLocateHandJoints = Marshal.GetDelegateForFunctionPointer<LocateHandJoints>(fn);
+                fn = Marshal.GetFunctionPointerForDelegate(hookedLocateHandJoints); break;
+        }
+        return r;
+    }
+
+    [AOT.MonoPInvokeCallback(typeof(CreateHandTracker))]
+    static int HookedCreateHandTracker(ulong session, IntPtr createInfo, out ulong tracker)
+    {
+        LastHandTrackerResult = nextCreateHandTracker(session, createInfo, out tracker);
+        int hand = Marshal.ReadInt32(createInfo, 16);       // XrHandTrackerCreateInfoEXT.hand
+        if (LastHandTrackerResult == 0) { handOf[tracker] = hand; handSession = session; }
+        HandTrackersCreated++;
+        Debug.Log($"[AvatarDemo] xrCreateHandTrackerEXT ({(hand == 1 ? "L" : "R")}): result {LastHandTrackerResult}");
+        return LastHandTrackerResult;
+    }
+
+    [AOT.MonoPInvokeCallback(typeof(DestroyHandTracker))]
+    static int HookedDestroyHandTracker(ulong tracker) { handOf.Remove(tracker); return nextDestroyHandTracker(tracker); }
+
+    [AOT.MonoPInvokeCallback(typeof(LocateHandJoints))]
+    static int HookedLocateHandJoints(ulong tracker, IntPtr locateInfo, IntPtr locations)
+    {
+        int hand = 0;
+        if (!WideMotionOn || !handOf.TryGetValue(tracker, out hand) || wideTracker[hand] == 0)
+            return nextLocateHandJoints(tracker, locateInfo, locations);
+        tracker = wideTracker[hand];
+        // our trackers were created with a data-source request, so they can report which source answered:
+        // put a data-source state struct at the front of the output's next chain, then restore it
+        if (sourceState == IntPtr.Zero) sourceState = Marshal.AllocHGlobal(24);
+        IntPtr oldNext = Marshal.ReadIntPtr(locations, 8);
+        Marshal.WriteInt32(sourceState, 0, 1000428001);     // XR_TYPE_HAND_TRACKING_DATA_SOURCE_STATE_EXT
+        Marshal.WriteIntPtr(sourceState, 8, oldNext);
+        Marshal.WriteInt32(sourceState, 16, 0); Marshal.WriteInt32(sourceState, 20, 0);
+        Marshal.WriteIntPtr(locations, 8, sourceState);
+        int r = nextLocateHandJoints(tracker, locateInfo, locations);
+        Marshal.WriteIntPtr(locations, 8, oldNext);
+        LastSourceActive[hand] = Marshal.ReadInt32(sourceState, 16) != 0;
+        LastDataSource[hand] = Marshal.ReadInt32(sourceState, 20);
+        if (locateCalls++ % 288 == 0)
+            Debug.Log($"[AvatarDemo] hand joints (wide motion trackers): L source {SourceName(1)}, R source {SourceName(2)}, result {r}");
+        return r;
+    }
+
+    public static string SourceName(int hand) => !LastSourceActive[hand] ? "-" : LastDataSource[hand] == 1000695000 ? "wide motion" : LastDataSource[hand] == 1 ? "cameras" : LastDataSource[hand] == 2 ? "controller" : LastDataSource[hand].ToString();
 
     /// <summary>Start or stop face tracking. Asks for the face cameras first, then the microphone.</summary>
     public bool SetFaceTracking(bool on)

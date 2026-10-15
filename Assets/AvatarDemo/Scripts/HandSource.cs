@@ -18,6 +18,19 @@ public class HandSource : MonoBehaviour
     public Transform leftController, rightController;
     [Tooltip("Optional: with body tracking on, a hand with neither hand tracking nor a controller uses the body tracker's hand joints")]
     public BodySource body;
+    [Tooltip("Simultaneous mode off: a controller that hasn't moved 2 mm or turned 2 degrees for this long is lying somewhere, not in a hand (s)")]
+    public float stillTime = 1.5f;
+    [Tooltip("When a hand changes source (controller, hand tracking, body tracking) or jumps more than 15 cm, blend over this long (s)")]
+    public float switchBlend = 0.2f;
+    readonly Vector3[] anchorPos = new Vector3[2];
+    readonly Quaternion[] anchorRot = new Quaternion[2];
+    readonly float[] lastMoved = new float[2];
+    // per hand: last output, its source, blend start, and counters for the log
+    readonly Vector3[] outWrist = new Vector3[2], outFingers = new Vector3[2], outPalm = new Vector3[2];
+    readonly int[] outSource = new int[2], switches = new int[2], jumps = new int[2];
+    readonly float[] blendStart = new float[2], lastGood = new float[2];
+    [Tooltip("A better source that drops out for less than this keeps its last pose (s)")]
+    public float dropGrace = 0.25f;
     // controller -> wrist, in the controller's aim frame (the wrist sits behind the grip)
     public Vector3 wristOffset = new Vector3(0f, -0.02f, -0.08f);
     [Tooltip("Extra rotation of the avatar hand relative to the controller's aim pose (degrees), per hand")]
@@ -33,6 +46,7 @@ public class HandSource : MonoBehaviour
     public class Hand
     {
         public bool isLeft, tracked, fromHandTracking, fromController, fromBody;
+        public int Source => fromController ? 1 : fromHandTracking ? 2 : fromBody ? 3 : 0;
         public Vector3 wrist;          // world position of the wrist
         public Vector3 fingers;        // unit direction the fingers point
         public Vector3 palm;           // unit direction the palm faces
@@ -58,11 +72,16 @@ public class HandSource : MonoBehaviour
         }
         Fill(left, leftController, subsystem != null ? subsystem.leftHand : default);
         Fill(right, rightController, subsystem != null ? subsystem.rightHand : default);
+        Smooth(left); Smooth(right);
         if (Time.frameCount % 144 == 0)
-            Debug.Log($"[AvatarDemo] hands: subsystems {found.Count}, running {(subsystem != null)}, " +
-                      $"L hand {(subsystem != null && subsystem.leftHand.isTracked)} ctrl {tracked[0].ReadValue<float>():F0} -> {Src(left)}, " +
-                      $"R hand {(subsystem != null && subsystem.rightHand.isTracked)} ctrl {tracked[1].ReadValue<float>():F0} -> {Src(right)}, mode {mode}, " +
+        {
+            var mf = MetaBodyFeature.Instance;
+            Debug.Log($"[AvatarDemo] hands: sim {(mf != null && mf.SimultaneousOn ? 1 : 0)} body {(body != null && body.Tracked ? 1 : 0)} mode {mode} | " +
+                      $"L hand {B(subsystem != null && subsystem.leftHand.isTracked)} ctrl {B(Ctrl(0))} still {Time.time - lastMoved[0]:F1}s -> {Src(left)} sw {switches[0]} jump {jumps[0]} | " +
+                      $"R hand {B(subsystem != null && subsystem.rightHand.isTracked)} ctrl {B(Ctrl(1))} still {Time.time - lastMoved[1]:F1}s -> {Src(right)} sw {switches[1]} jump {jumps[1]} | " +
                       $"detached L {Det(true)} R {Det(false)}");
+            switches[0] = switches[1] = jumps[0] = jumps[1] = 0;
+        }
         if (Time.frameCount % 144 == 72) Profiles();
     }
 
@@ -79,7 +98,19 @@ public class HandSource : MonoBehaviour
             return;
         }
         int i = h.isLeft ? 0 : 1;
-        bool ctrl = controller != null && tracked[i].ReadValue<float>() > 0.5f;
+        bool ctrl = controller != null && Ctrl(i);
+        if (ctrl)
+        {
+            // local pose: moving the rig (locomotion) must not count as the controller moving
+            if ((controller.localPosition - anchorPos[i]).sqrMagnitude > 0.002f * 0.002f || Quaternion.Angle(controller.localRotation, anchorRot[i]) > 2f)
+            { lastMoved[i] = Time.time; anchorPos[i] = controller.localPosition; anchorRot[i] = controller.localRotation; }
+        }
+        // With simultaneous mode on, Quest reports a controller at /user/hand/* only while it is in that hand (a
+        // controller put down moves to the detached path). With it off (body tracking, "hands or controllers"), a
+        // controller lying on the table is still reported there, so it counts as held only while it moves.
+        var f = MetaBodyFeature.Instance;
+        bool simultaneous = f != null && f.SimultaneousOn;
+        if (ctrl && !simultaneous && Time.time - lastMoved[i] > stillTime) ctrl = false;
         bool hand = mode == Mode.Auto && xr.isTracked;
         if (hand)
         {
@@ -87,8 +118,7 @@ public class HandSource : MonoBehaviour
                 if (xr.GetJoint(XRHandJointIDUtility.FromIndex(j)).TryGetPose(out var jp)) h.joints[j] = ToWorld(jp).position;
             h.hasJoints = true;
         }
-        // Controller first. With simultaneous hands and controllers on, Quest reports a controller at
-        // /user/hand/left only while it is in that hand; a controller put down moves to the detached path.
+        // controller first: it is in this hand
         if (ctrl)
         {
             h.hasJoints = false;
@@ -173,6 +203,47 @@ public class HandSource : MonoBehaviour
         string all = string.Join(" | ", names);
         if (all != lastDevices) { lastDevices = all; Debug.Log("[AvatarDemo] devices: " + all); }
     }
+    bool Ctrl(int i) => tracked[i].ReadValue<float>() > 0.5f;
+    static string B(bool b) => b ? "1" : "0";
+
+    // A hand's output, smoothed:
+    //  - a better source (controller > hand tracking > body tracking) that drops out for less than dropGrace keeps
+    //    its last pose, so one-frame tracking losses don't flip the source back and forth;
+    //  - when the source changes, or the same source jumps more than 15 cm, blend over switchBlend.
+    void Smooth(Hand h)
+    {
+        int i = h.isLeft ? 0 : 1;
+        int src = h.tracked ? h.Source : 0;
+        if (outSource[i] != 0 && Rank(src) > Rank(outSource[i]) && Time.time - lastGood[i] < dropGrace)
+        {
+            h.tracked = true; h.hasJoints = false;
+            h.fromController = outSource[i] == 1; h.fromHandTracking = outSource[i] == 2; h.fromBody = outSource[i] == 3;
+            h.wrist = outWrist[i]; h.fingers = outFingers[i]; h.palm = outPalm[i];
+            return;
+        }
+        if (src == 0) { outSource[i] = 0; outWrist[i] = Vector3.zero; return; }   // zero: don't count the return as a jump
+        lastGood[i] = Time.time;
+        if (src != outSource[i])
+        {
+            if (outSource[i] != 0) { switches[i]++; blendStart[i] = Time.time; }
+            else blendStart[i] = -1f;                    // was untracked: HalfBodyAvatar eases the arm in
+            outSource[i] = src;
+        }
+        // the same source can jump too (hand tracking re-finding a hand): blend those as well
+        bool jump = outWrist[i] != Vector3.zero && (h.wrist - outWrist[i]).sqrMagnitude > 0.15f * 0.15f;
+        if (jump) { jumps[i]++; if (Time.time - blendStart[i] > switchBlend) blendStart[i] = Time.time; }
+        float k = blendStart[i] < 0f || switchBlend <= 0f ? 1f : Mathf.Clamp01((Time.time - blendStart[i]) / switchBlend);
+        if (k < 1f)
+        {
+            h.wrist = Vector3.Lerp(outWrist[i], h.wrist, k);
+            h.fingers = Vector3.Slerp(outFingers[i], h.fingers, k).normalized;
+            h.palm = Vector3.Slerp(outPalm[i], h.palm, k).normalized;
+        }
+        outWrist[i] = h.wrist; outFingers[i] = h.fingers; outPalm[i] = h.palm;
+    }
+
+    static int Rank(int source) => source == 0 ? 9 : source;    // 1 controller, 2 hand tracking, 3 body tracking
+
     static string Det(bool left) { var d = DetachedControllersFeature.Find(left); return d == null ? "none" : d.isTracked.isPressed ? "tracked" : "untracked"; }
     static string Src(Hand h) => h.fromHandTracking ? "hand" : h.fromController ? "controller" : h.fromBody ? "body" : "-";
 }

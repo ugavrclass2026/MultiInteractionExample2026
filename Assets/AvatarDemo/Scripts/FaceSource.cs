@@ -54,11 +54,20 @@ public class FaceSource : MonoBehaviour
     bool asked;
     bool visemesValid;
 
+    public bool on = true;
+
     void Update()
     {
         Tracking = false;
         var f = MetaBodyFeature.Instance;
         if (f == null) { Status = "unavailable (needs the OpenXR feature, on a Quest)"; return; }
+        if (!on)
+        {
+            if (f.FaceTrackingOn) f.SetFaceTracking(false);
+            System.Array.Clear(expressions, 0, expressions.Length); System.Array.Clear(visemes, 0, visemes.Length);
+            Open = 0f; Spread = 0f; Status = "off";
+            return;
+        }
 #if UNITY_ANDROID && !UNITY_EDITOR
         bool face = UnityEngine.Android.Permission.HasUserAuthorizedPermission(FacePermission);
         bool mic = UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Microphone);

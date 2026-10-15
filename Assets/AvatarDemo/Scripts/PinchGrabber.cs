@@ -33,6 +33,8 @@ public class PinchGrabber : MonoBehaviour
         bool active = h.fromHandTracking && h.hasJoints;
         if (cursor) cursor.gameObject.SetActive(active);
         if (!active) { if (pinched) EndPinch(); Select(null); return; }
+        // pointing at a UI panel: the pinch is a click (XRUIInput), not a grab or a pull
+        if (UIRay.IsOverUI(isLeft) && !pinched) { Select(null); if (cursor) cursor.gameObject.SetActive(false); return; }
 
         Vector3 thumb = h.joints[XRHandJointID.ThumbTip.ToIndex()], index = h.joints[XRHandJointID.IndexTip.ToIndex()];
         Vector3 point = (thumb + index) * 0.5f;

@@ -6,6 +6,9 @@ using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.XR.OpenXR;
 
 /// <summary>
@@ -90,13 +93,22 @@ public static class AvatarDemoBuilder
         sw.hands = hs; sw.body = bs; sw.face = face; sw.joints = jd; sw.mirror = mirror; sw.controllerHands = new[] { handL, handR };
         sw.hmd = cam.transform; sw.floor = floor ? floor.transform : null;
 
-        BuildPanel(demo, sw, accent, orange);
-        foreach (var (h, left) in new[] { (handL, true), (handR, false) })
+        // the control panel: Unity UI, clicked with a controller ray + trigger or a hand ray + pinch
+        var panel = BuildPanel(demo, sw, cam);
+        var es = new GameObject("EventSystem", typeof(EventSystem)); es.transform.SetParent(demo);
+        var module = es.AddComponent<InputSystemUIInputModule>(); module.enabled = false;     // XRUIInput enables it
+        es.AddComponent<XRUIInput>().trackingOrigin = origin;
+        var rayMat = new Material(Shader.Find("Universal Render Pipeline/Unlit")); rayMat.SetColor("_BaseColor", new Color(0.35f, 0.85f, 1f));
+        AssetDatabase.CreateAsset(rayMat, Root + "/Materials/Ray.mat");
+        foreach (var left in new[] { true, false })
         {
-            var p = new GameObject(left ? "Poker L" : "Poker R");
-            p.transform.SetParent(demo);
-            p.AddComponent<SphereCollider>(); p.AddComponent<Rigidbody>();
-            var pk = p.AddComponent<Poker>(); pk.hands = hs; pk.isLeft = left; pk.controllerTip = h.grabPoint;
+            var r = new GameObject(left ? "UI Ray L" : "UI Ray R").AddComponent<UIRay>();
+            r.transform.SetParent(demo); r.hands = hs; r.isLeft = left; r.trackingSpace = origin; r.panels = new[] { panel };
+            r.line = r.gameObject.AddComponent<LineRenderer>();
+            r.line.positionCount = 2; r.line.widthMultiplier = 0.003f; r.line.sharedMaterial = rayMat; r.line.shadowCastingMode = ShadowCastingMode.Off;
+            r.line.enabled = false;
+            r.dot = Prim(PrimitiveType.Sphere, r.transform, Vector3.zero, Vector3.one * 0.012f, rayMat).transform;
+            r.dot.gameObject.SetActive(false);
         }
 
         foreach (var left in new[] { true, false })
@@ -263,40 +275,104 @@ public static class AvatarDemoBuilder
         return root.gameObject;
     }
 
-    static void BuildPanel(Transform parent, AvatarSwitcher sw, Material cap, Material frame)
+    static RectTransform BuildPanel(Transform parent, AvatarSwitcher sw, Camera cam)
     {
-        var panel = new GameObject("Button Panel").transform; panel.SetParent(parent);
-        panel.SetPositionAndRotation(new Vector3(0.62f, 1.0f, 0.55f), Quaternion.LookRotation(new Vector3(0.62f, 0f, 0.55f).normalized, Vector3.up));
-        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        var textMat = new Material(Shader.Find("AvatarDemo/StereoText")) { mainTexture = font.material.mainTexture };
-        AssetDatabase.CreateAsset(textMat, Root + "/Materials/StereoText.mat");
-        TextMesh Text(Transform p, Vector3 pos, string s, float size)
+        var res = new DefaultControls.Resources
         {
-            var go = new GameObject("Label"); go.transform.SetParent(p, false); go.transform.localPosition = pos;
-            go.transform.localRotation = Quaternion.identity;
-            var t = go.AddComponent<TextMesh>(); t.font = font; t.text = s; t.fontSize = 64; t.characterSize = size;
-            t.anchor = TextAnchor.MiddleCenter; t.alignment = TextAlignment.Center; t.color = new Color(0.9f, 0.93f, 0.96f);
-            go.GetComponent<MeshRenderer>().sharedMaterial = textMat;
+            standard = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd"),
+            background = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Background.psd"),
+            checkmark = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Checkmark.psd"),
+        };
+        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        Color ink = new Color(0.92f, 0.94f, 0.96f), accent = new Color(0.01f, 0.54f, 0.65f);
+
+        var go = new GameObject("Control Panel", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(TrackedDeviceRaycaster));
+        go.transform.SetParent(parent, false);
+        var canvas = go.GetComponent<Canvas>(); canvas.renderMode = RenderMode.WorldSpace; canvas.worldCamera = cam;
+        go.GetComponent<CanvasScaler>().dynamicPixelsPerUnit = 3f;
+        var rt = (RectTransform)go.transform;
+        rt.sizeDelta = new Vector2(720f, 960f); rt.localScale = Vector3.one * 0.0008f;
+        var where = new Vector3(0.8f, 1.25f, 0.75f);
+        rt.SetPositionAndRotation(where, Quaternion.LookRotation(new Vector3(where.x, 0f, where.z).normalized, Vector3.up));
+
+        RectTransform Child(Transform p, string name, params System.Type[] comps)
+        {
+            var c = new GameObject(name, comps); c.transform.SetParent(p, false);
+            var r = c.GetComponent<RectTransform>() ?? c.AddComponent<RectTransform>(); return r;
+        }
+        void Stretch(RectTransform r) { r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one; r.offsetMin = r.offsetMax = Vector2.zero; }
+        void Height(Component c, float h, float w = -1f) { var le = c.gameObject.GetComponent<LayoutElement>() ?? c.gameObject.AddComponent<LayoutElement>(); le.preferredHeight = h; if (w > 0) le.preferredWidth = w; }
+        Text Label(Transform p, string s, int size, float h, FontStyle style = FontStyle.Normal, TextAnchor anchor = TextAnchor.MiddleLeft)
+        {
+            var t = Child(p, "Text", typeof(RectTransform), typeof(Text)).GetComponent<Text>();
+            t.font = font; t.text = s; t.fontSize = size; t.fontStyle = style; t.color = ink; t.alignment = anchor;
+            t.horizontalOverflow = HorizontalWrapMode.Wrap; t.verticalOverflow = VerticalWrapMode.Overflow;
+            if (h > 0) Height(t, h);
             return t;
         }
-        var back = Prim(PrimitiveType.Cube, panel, new Vector3(0, 0.1f, 0.02f), new Vector3(0.52f, 0.5f, 0.02f), frame);
-        Object.DestroyImmediate(back.GetComponent<Collider>());
-        var items = new (string, UnityEngine.Events.UnityAction)[]
-        { ("Next\navatar", sw.NextAvatar), ("Tracking\nmode", sw.NextMode), ("Mirror", sw.ToggleMirror),
-          ("Height -", sw.HeightDown), ("Height +", sw.HeightUp), ("Arms -", sw.ArmsDown), ("Arms +", sw.ArmsUp) };
-        for (int i = 0; i < items.Length; i++)
+        Button Btn(Transform p, string s, UnityEngine.Events.UnityAction action, float w)
         {
-            bool top = i < 3;
-            float x = top ? -0.12f + i * 0.12f : -0.18f + (i - 3) * 0.12f, y = top ? 0.07f : -0.08f;
-            var b = new GameObject("Button: " + items[i].Item1.Replace("\n", " ")).transform; b.SetParent(panel, false); b.localPosition = new Vector3(x, y, 0f);
-            var col = b.gameObject.AddComponent<BoxCollider>(); col.isTrigger = true; col.size = new Vector3(0.08f, 0.08f, 0.06f); col.center = new Vector3(0, 0, -0.02f);
-            var capT = Prim(PrimitiveType.Cube, b, Vector3.zero, new Vector3(0.07f, 0.07f, 0.025f), cap).transform;
-            Object.DestroyImmediate(capT.GetComponent<Collider>());
-            var pb = b.gameObject.AddComponent<PokeButton>(); pb.cap = capT;
-            UnityEventTools.AddPersistentListener(pb.onPress, items[i].Item2);
-            Text(b, new Vector3(0, -0.06f, -0.015f), items[i].Item1, 0.004f);
+            var b = DefaultControls.CreateButton(res); b.transform.SetParent(p, false); b.name = "Button: " + s;
+            b.GetComponent<Image>().color = accent;
+            var t = b.GetComponentInChildren<Text>(); t.text = s; t.font = font; t.fontSize = 30; t.color = Color.white;
+            Height(b.transform, 56f, w);
+            var button = b.GetComponent<Button>();
+            UnityEventTools.AddPersistentListener(button.onClick, action);
+            return button;
         }
-        sw.status = Text(panel, new Vector3(0, 0.27f, -0.015f), "", 0.0038f);
+        RectTransform Row(Transform p, float h)
+        {
+            var r = Child(p, "Row", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+            var g = r.GetComponent<HorizontalLayoutGroup>(); g.spacing = 12f; g.childAlignment = TextAnchor.MiddleLeft;
+            g.childControlWidth = g.childControlHeight = true; g.childForceExpandWidth = false; g.childForceExpandHeight = true;
+            Height(r, h); return r;
+        }
+
+        var bg = Child(rt, "Background", typeof(RectTransform), typeof(Image)); Stretch(bg);
+        bg.GetComponent<Image>().color = new Color(0.11f, 0.12f, 0.14f, 0.94f);
+        var content = Child(rt, "Content", typeof(RectTransform), typeof(VerticalLayoutGroup)); Stretch(content);
+        var v = content.GetComponent<VerticalLayoutGroup>();
+        v.padding = new RectOffset(28, 28, 22, 22); v.spacing = 8f;
+        v.childControlWidth = v.childControlHeight = true; v.childForceExpandWidth = true; v.childForceExpandHeight = false;
+
+        Label(content, "Avatar demo", 36, 46f, FontStyle.Bold);
+        sw.status = Label(content, "", 20, 92f, FontStyle.Normal, TextAnchor.UpperLeft);
+        sw.status.color = new Color(0.75f, 0.8f, 0.85f);
+
+        var avatarRow = Row(content, 58f);
+        Btn(avatarRow, "<", sw.PreviousAvatar, 70f);
+        sw.avatarName = Label(avatarRow, "", 24, -1f, FontStyle.Normal, TextAnchor.MiddleCenter);
+        sw.avatarName.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+        Btn(avatarRow, ">", sw.NextAvatar, 70f);
+
+        Label(content, "Tracking", 26, 36f, FontStyle.Bold);
+        var setters = new UnityEngine.Events.UnityAction<bool>[] { sw.SetHandTracking, sw.SetMultimodal, sw.SetBody, sw.SetWideMotion, sw.SetFastMotion, sw.SetFace, sw.SetMirror };
+        sw.toggles = new Toggle[setters.Length]; sw.notes = new Text[setters.Length];
+        for (int i = 0; i < setters.Length; i++)
+        {
+            if (i == (int)AvatarSwitcher.Opt.Mirror) Label(content, "View", 26, 36f, FontStyle.Bold);
+            var tg = DefaultControls.CreateToggle(res); tg.transform.SetParent(content, false); tg.name = "Toggle: " + AvatarSwitcher.OptLabels[i];
+            Height(tg.transform, 62f);
+            var box = (RectTransform)tg.transform.Find("Background");
+            box.anchorMin = box.anchorMax = new Vector2(0f, 0.5f); box.pivot = new Vector2(0f, 0.5f);
+            box.sizeDelta = new Vector2(40f, 40f); box.anchoredPosition = new Vector2(0f, 0f);
+            var check = (RectTransform)box.Find("Checkmark"); Stretch(check);
+            var label = tg.GetComponentInChildren<Text>(); var lr = label.rectTransform;
+            lr.anchorMin = new Vector2(0f, 0.45f); lr.anchorMax = Vector2.one; lr.offsetMin = new Vector2(56f, 0f); lr.offsetMax = Vector2.zero;
+            label.text = AvatarSwitcher.OptLabels[i]; label.font = font; label.fontSize = 28; label.color = ink; label.alignment = TextAnchor.MiddleLeft;
+            var note = Label(tg.transform, AvatarSwitcher.OptNotes[i], 19, -1f);
+            var nr = note.rectTransform; nr.anchorMin = Vector2.zero; nr.anchorMax = new Vector2(1f, 0.45f); nr.offsetMin = new Vector2(56f, 0f); nr.offsetMax = Vector2.zero;
+            var toggle = tg.GetComponent<Toggle>();
+            UnityEventTools.AddPersistentListener(toggle.onValueChanged, setters[i]);
+            sw.toggles[i] = toggle; sw.notes[i] = note;
+        }
+
+        var sizeRow = Row(content, 58f);
+        sw.heightText = Label(sizeRow, "Height", 24, -1f); sw.heightText.gameObject.AddComponent<LayoutElement>().preferredWidth = 170f;
+        Btn(sizeRow, "-", sw.HeightDown, 64f); Btn(sizeRow, "+", sw.HeightUp, 64f);
+        sw.armsText = Label(sizeRow, "Arms", 24, -1f); sw.armsText.gameObject.AddComponent<LayoutElement>().preferredWidth = 170f;
+        Btn(sizeRow, "-", sw.ArmsDown, 64f); Btn(sizeRow, "+", sw.ArmsUp, 64f);
+        return rt;
     }
 
     // ---------- helpers ----------

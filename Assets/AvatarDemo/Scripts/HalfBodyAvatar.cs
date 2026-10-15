@@ -42,7 +42,14 @@ public class HalfBodyAvatar : MonoBehaviour
     public float maxTwist = 50f;
     [Range(0f, 1f)] public float handsWeight = 0.6f;         // how much the hands pull the body's facing
 
+    [Header("Untracked hands")]
+    [Tooltip("An arm whose hand isn't tracked holds its last pose this long, then eases down to the side (s)")]
+    public float holdTime = 0.4f, easeTime = 0.5f;
+
     public float ArmScale { get; private set; } = 1f;
+
+    class ArmState { public Vector3 wrist, fingers, palm; public bool seen; public float lost = 999f, rest = 1f; }
+    readonly ArmState leftState = new ArmState(), rightState = new ArmState();
 
     Transform[] driven;
     Quaternion[] bindLocal;
@@ -165,20 +172,34 @@ public class HalfBodyAvatar : MonoBehaviour
         // 6-7. arms
         if (hands != null)
         {
-            Arm(hands.left, leftUpper, leftLower, leftHand, lHandBind, leftFingers, -1f, MetaBodyFeature.LeftArmLower);
-            Arm(hands.right, rightUpper, rightLower, rightHand, rHandBind, rightFingers, 1f, MetaBodyFeature.RightArmLower);
+            Arm(hands.left, leftState, leftUpper, leftLower, leftHand, lHandBind, leftFingers, -1f, MetaBodyFeature.LeftArmLower);
+            Arm(hands.right, rightState, rightUpper, rightLower, rightHand, rHandBind, rightFingers, 1f, MetaBodyFeature.RightArmLower);
         }
     }
 
-    void Arm(HandSource.Hand h, Transform upper, Transform lower, Transform hand, Quaternion handBind, Transform[] fingers, float side, int trackedElbow)
+    void Arm(HandSource.Hand h, ArmState st, Transform upper, Transform lower, Transform hand, Quaternion handBind, Transform[] fingers, float side, int trackedElbow)
     {
-        if (!h.tracked || upper == null || lower == null || hand == null) return;
+        if (upper == null || lower == null || hand == null) return;
+        // Untracked: keep the last pose for holdTime, then ease to hanging at the side; ease back in when tracked.
+        Vector3 lateral = transform.right * side;
+        float len = bindArmLength * ArmScale * transform.localScale.x;
+        Vector3 restWrist = upper.position - transform.up * (len * 0.95f) + transform.forward * (0.08f * transform.localScale.x) + lateral * (0.04f * transform.localScale.x);
+        Vector3 restFingers = -transform.up, restPalm = -lateral;
+        if (h.tracked) { st.wrist = h.wrist; st.fingers = h.fingers; st.palm = h.palm; st.seen = true; st.lost = 0f; }
+        else st.lost += Time.deltaTime;
+        if (!st.seen) { st.wrist = restWrist; st.fingers = restFingers; st.palm = restPalm; }
+        float target = h.tracked ? 0f : st.lost > holdTime ? 1f : st.rest;
+        st.rest = Mathf.MoveTowards(st.rest, target, Time.deltaTime / Mathf.Max(0.01f, easeTime));
+        float k = Mathf.SmoothStep(0f, 1f, st.rest);
+        Vector3 wrist = Vector3.Lerp(st.wrist, restWrist, k);
+        Vector3 fwd = Vector3.Slerp(st.fingers, restFingers, k), palm = Vector3.Slerp(st.palm, restPalm, k);
+
         Vector3 pole = body != null && body.Valid(trackedElbow)
             ? body.pos[trackedElbow]
             : upper.position + transform.rotation * Vector3.Scale(elbowPole, new Vector3(side, 1f, 1f)) * transform.localScale.x;
-        TwoBoneIK.Solve(upper, lower, hand, h.wrist, pole);
-        hand.rotation = Quaternion.LookRotation(h.fingers, h.palm) * Quaternion.Inverse(handBind);
-        if (h.hasJoints) Fingers(h, fingers);
+        TwoBoneIK.Solve(upper, lower, hand, wrist, pole);
+        hand.rotation = Quaternion.LookRotation(fwd, palm) * Quaternion.Inverse(handBind);
+        if (h.tracked && h.hasJoints && k < 0.01f) Fingers(h, fingers);
     }
 
     static readonly XRHandJointID[][] Chains =
