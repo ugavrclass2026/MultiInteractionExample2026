@@ -1,5 +1,21 @@
 {
   "dependencies": {
+    "com.endel.nativewebsocket": {
+      "version": "https://github.com/endel/NativeWebSocket.git#upm",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "ea014c9ae534d56111962d96f89f8a046e302dc9"
+    },
+    "com.itisnajim.socketiounity": {
+      "version": "https://github.com/itisnajim/SocketIOUnity.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.nuget.newtonsoft-json": "3.0.2"
+      },
+      "hash": "00e176cdc31b1cd06bdc556ac919f9bcd166d7ee"
+    },
     "com.unity.ai.navigation": {
       "version": "2.0.14",
       "depth": 0,
@@ -97,6 +113,13 @@
     "com.unity.nuget.mono-cecil": {
       "version": "1.11.6",
       "depth": 2,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.nuget.newtonsoft-json": {
+      "version": "3.2.1",
+      "depth": 0,
       "source": "registry",
       "dependencies": {},
       "url": "https://packages.unity.com"
@@ -257,6 +280,13 @@
         "com.unity.xr.legacyinputhelpers": "2.1.2"
       },
       "url": "https://packages.unity.com"
+    },
+    "edu.uga.engr.vel.velnet": {
+      "version": "2.0.15",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://npm.ugavel.com"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",

@@ -76,3 +76,7 @@ crashlytics-build.properties
 # macOS / misc
 .DS_Store
 .utmp/
+
+# VelChat address (private; ask the instructor)
+/Assets/VirtualPerson/Resources/velchat_host.txt
+/Assets/VirtualPerson/Resources/velchat_host.txt.meta

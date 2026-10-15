@@ -100,3 +100,21 @@ Scripts: `HalfBodyAvatar` (per-frame loop), `TwoBoneIK`, `HandSource`, `BodySour
 Meta's extensions directly), `PinchGrabber`, `StereoMirror`, `FirstPersonHead`, `LimbVisual`, `AbstractAvatar`, `JointDots`,
 `AvatarSwitcher`, `XRUIInput`, `UIRay`, `DetachedControllersFeature`, `ControllerModels`, `FaceSource`, `AvatarFace`. Project changes: `com.unity.xr.hands`, OpenXR Hand Tracking + Meta Hand Tracking Aim +
 the two AvatarDemo features (Android), layers `MirrorSurface`, `MirrorOnly`, `FirstPersonOnly`.
+
+## Virtual person demo (lecture 7)
+
+The avatar demo plus Sam, a virtual person you talk to. Built by **Avatar Demo ▸ Build Virtual Person Scene**
+(`Assets/VirtualPerson/Editor/VirtualPersonBuilder.cs`); batch: `-executeMethod AvatarDemoBuilder.BuildPersonApk` →
+`Builds/VirtualPerson.apk` (app id `com.ugavr.virtualperson`).
+
+- **Talk:** hold A or X, or check *Hands-free* on Sam's panel (VelVoice's voice gate; a 0.8 s pause sends)
+- **VelChat** (the lab's AI service; its address goes in `Assets/VirtualPerson/Resources/velchat_host.txt`, which is
+  not in git: ask the instructor), Socket.IO: one `chat_message`
+  with the Opus packets, a `context_id` and a persona prompt → Whisper → Gemma (streamed) → Kokoro voice, one sentence at
+  a time as Opus `audio_frame`s (`VelChatClient`). Measured on a Quest 3 with the model warm: speaking ~0.4–0.5 s after
+  letting go
+- **Gestures:** a second, one-shot command-mode request returns one gesture per sentence (JSON); keyword rules until it
+  arrives. Gestures are Rocketbox motion-capture clips (`Assets/VirtualPerson/Animations`, MIT) on a Humanoid Animator,
+  crossfaded; look-at IK keeps his head and eyes on you (`AgentGestures`)
+- **Face:** his voice's loudness opens the jaw; blinks and brows (`FaceSource` voice mode → `AvatarFace`)
+- Packages added: VelNet (VelVoice, Concentus Opus) from the VEL registry, NativeWebSocket, SocketIOUnity

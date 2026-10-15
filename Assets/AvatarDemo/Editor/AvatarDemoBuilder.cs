@@ -16,7 +16,7 @@ using UnityEngine.XR.OpenXR;
 /// (head + hands, an IK robot, a Rocketbox human), hand tracking or controllers, and poke buttons.
 /// Menu: Avatar Demo ▸ Build Scene. Batch: -executeMethod AvatarDemoBuilder.BuildApk
 /// </summary>
-public static class AvatarDemoBuilder
+public static partial class AvatarDemoBuilder
 {
     const string Root = "Assets/AvatarDemo";
     const string ScenePath = Root + "/AvatarDemo.unity";
@@ -26,15 +26,18 @@ public static class AvatarDemoBuilder
     static int L(string name) => LayerMask.NameToLayer(name);
 
     [MenuItem("Avatar Demo/Build Scene")]
-    public static void BuildScene()
+    public static void BuildScene() => BuildSceneAt(ScenePath, false);
+
+    /// <summary>The avatar demo scene at <paramref name="path"/>; with a virtual person to talk to if asked (VirtualPersonBuilder).</summary>
+    static void BuildSceneAt(string path, bool withPerson)
     {
         EnsureLayers("MirrorSurface", "MirrorOnly", "FirstPersonOnly");
         EnableHandTracking();
         SetupHumanImport();
 
-        AssetDatabase.DeleteAsset(ScenePath);
-        if (!AssetDatabase.CopyAsset("Assets/Scenes/InteractionDemo.unity", ScenePath)) throw new System.Exception("could not copy InteractionDemo");
-        var scene = EditorSceneManager.OpenScene(ScenePath);
+        AssetDatabase.DeleteAsset(path);
+        if (!AssetDatabase.CopyAsset("Assets/Scenes/InteractionDemo.unity", path)) throw new System.Exception("could not copy InteractionDemo");
+        var scene = EditorSceneManager.OpenScene(path);
 
         var origin = GameObject.Find("XR Origin").transform;
         var cam = GameObject.Find("Main Camera").GetComponent<Camera>();
@@ -100,9 +103,10 @@ public static class AvatarDemoBuilder
         es.AddComponent<XRUIInput>().trackingOrigin = origin;
         var rayMat = new Material(Shader.Find("Universal Render Pipeline/Unlit")); rayMat.SetColor("_BaseColor", new Color(0.35f, 0.85f, 1f));
         AssetDatabase.CreateAsset(rayMat, Root + "/Materials/Ray.mat");
+        var rays = new List<UIRay>();
         foreach (var left in new[] { true, false })
         {
-            var r = new GameObject(left ? "UI Ray L" : "UI Ray R").AddComponent<UIRay>();
+            var r = new GameObject(left ? "UI Ray L" : "UI Ray R").AddComponent<UIRay>(); rays.Add(r);
             r.transform.SetParent(demo); r.hands = hs; r.isLeft = left; r.trackingSpace = origin; r.panels = new[] { panel };
             r.line = r.gameObject.AddComponent<LineRenderer>();
             r.line.positionCount = 2; r.line.widthMultiplier = 0.003f; r.line.sharedMaterial = rayMat; r.line.shadowCastingMode = ShadowCastingMode.Off;
@@ -123,10 +127,12 @@ public static class AvatarDemoBuilder
         cm.transform.SetParent(demo); cm.hands = hs; cm.trackingSpace = origin;
         cm.leftModel = ControllerModel(cm.transform, "left"); cm.rightModel = ControllerModel(cm.transform, "right");
 
+        if (withPerson) AddPerson(demo, cam, rays);
+
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
         AssetDatabase.SaveAssets();
-        Debug.Log("[AvatarDemo] scene built: " + ScenePath);
+        Debug.Log("[AvatarDemo] scene built: " + path);
     }
 
     // ---------- pieces ----------

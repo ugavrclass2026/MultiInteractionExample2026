@@ -47,6 +47,8 @@ public class HalfBodyAvatar : MonoBehaviour
     public float holdTime = 0.4f, easeTime = 0.5f;
 
     public float ArmScale { get; private set; } = 1f;
+    /// <summary>Eye height above the avatar's feet at the current scale (m).</summary>
+    public float EyeHeight => avatarEyeHeight * transform.localScale.y;
 
     class ArmState { public Vector3 wrist, fingers, palm; public bool seen; public float lost = 999f, rest = 1f; }
     readonly ArmState leftState = new ArmState(), rightState = new ArmState();

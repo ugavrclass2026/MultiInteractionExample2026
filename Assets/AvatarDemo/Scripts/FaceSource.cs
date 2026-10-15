@@ -55,9 +55,37 @@ public class FaceSource : MonoBehaviour
     bool visemesValid;
 
     public bool on = true;
+    [Tooltip("Set for a virtual person: the face follows this voice (mouth from loudness, procedural blinks) instead of Meta face tracking")]
+    public AudioSource voice;
+    float nextBlink, blinkStart = -1f;
+    readonly float[] voiceBuf = new float[256];
+
+    // A face for a virtual person: there is no face to track, so the mouth opens with the voice's loudness,
+    // the brows lift a little on loud syllables, it blinks every few seconds and keeps a slight smile.
+    void VoiceFace()
+    {
+        System.Array.Clear(expressions, 0, expressions.Length); System.Array.Clear(visemes, 0, visemes.Length);
+        float loud = 0f;
+        if (voice.isPlaying)
+        {
+            voice.GetOutputData(voiceBuf, 0);
+            float sum = 0f; foreach (var v in voiceBuf) sum += v * v;
+            loud = Mathf.Clamp01(Mathf.Sqrt(sum / voiceBuf.Length) * 7f);
+        }
+        Open = Mathf.Lerp(Open, loud, 1f - Mathf.Exp(-Time.deltaTime * 25f));
+        Spread = 0.15f;
+        if (Time.time > nextBlink) { blinkStart = Time.time; nextBlink = Time.time + Random.Range(2.5f, 5.5f); }
+        float b = blinkStart < 0f ? 0f : Mathf.Clamp01(1f - Mathf.Abs(Time.time - blinkStart - 0.07f) / 0.07f);
+        expressions[EyesClosedL] = expressions[EyesClosedR] = b;
+        expressions[LipCornerPullerL] = expressions[LipCornerPullerR] = 0.3f;
+        expressions[InnerBrowRaiserL] = expressions[InnerBrowRaiserR] = 0.15f + 0.3f * loud;
+        Tracking = true;
+        Status = voice.isPlaying ? "speaking" : "quiet";
+    }
 
     void Update()
     {
+        if (voice != null) { VoiceFace(); return; }
         Tracking = false;
         var f = MetaBodyFeature.Instance;
         if (f == null) { Status = "unavailable (needs the OpenXR feature, on a Quest)"; return; }
