@@ -35,11 +35,12 @@ MonoBehaviour:
   m_Name: MetaBodyFeature Android
   m_EditorClassIdentifier: Assembly-CSharp::MetaBodyFeature
   m_enabled: 1
-  nameUi: 'AvatarDemo: Meta body tracking + simultaneous hands/controllers'
+  nameUi: 'AvatarDemo: Meta body + face tracking + simultaneous hands/controllers'
   version: 0.1.0
   featureIdInternal: edu.uga.csci4830.avatardemo.metabody
   openxrExtensionStrings: XR_FB_body_tracking XR_META_body_tracking_fidelity XR_META_simultaneous_hands_and_controllers
-    XR_KHR_convert_timespec_time
+    XR_KHR_convert_timespec_time XR_FB_face_tracking2 XR_META_face_tracking_visemes
+    XR_META_hand_tracking_frequency_hint XR_EXT_hand_tracking_data_source XR_META_hand_tracking_wide_motion_mode2
   company: UGA CSCI 4830
   priority: 0
   targetOpenXRApiVersion: 
