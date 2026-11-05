@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "com.endel.nativewebsocket": "https://github.com/endel/NativeWebSocket.git#upm",
     "com.itisnajim.socketiounity": "https://github.com/itisnajim/SocketIOUnity.git",
     "com.unity.ai.navigation": "2.0.14",
     "com.unity.collab-proxy": "2.12.4",
@@ -52,7 +51,7 @@
     "com.unity.xr.hands": "1.9.0",
     "com.unity.xr.management": "4.5.4",
     "com.unity.xr.openxr": "1.16.1",
-    "edu.uga.engr.vel.velnet": "2.0.15"
+    "edu.uga.engr.vel.velnet": "2.0.18"
   },
   "scopedRegistries": [
     {

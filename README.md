@@ -117,4 +117,4 @@ The avatar demo plus Sam, a virtual person you talk to. Built by **Avatar Demo â
   arrives. Gestures are Rocketbox motion-capture clips (`Assets/VirtualPerson/Animations`, MIT) on a Humanoid Animator,
   crossfaded; look-at IK keeps his head and eyes on you (`AgentGestures`)
 - **Face:** his voice's loudness opens the jaw; blinks and brows (`FaceSource` voice mode â†’ `AvatarFace`)
-- Packages added: VelNet (VelVoice, Concentus Opus) from the VEL registry, NativeWebSocket, SocketIOUnity
+- Packages added: VelNet (VelVoice, Concentus Opus) from the VEL registry, SocketIOUnity
